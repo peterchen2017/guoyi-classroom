@@ -1,0 +1,9 @@
+验证时间（Asia/Shanghai）：2026-11-22 19:59
+
+./start_verify.sh
+
+tests/test_desktop.py：通过 14，失败 0
+tests/test_web_filter.py：通过 20，失败 0
+tests/test_flow.py：通过 29，失败 0
+
+本轮为 Win7 安装修复后的功能回归，结果全部通过。

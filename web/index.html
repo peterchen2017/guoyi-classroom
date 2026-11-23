@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>乐昌国艺书院 · 机房课堂管理</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <div id="login-page" class="page">
+    <div class="login-card">
+      <div class="logo">园</div>
+      <h1>乐昌国艺书院</h1>
+      <p class="sub">机房课堂管理 · 教师控制台</p>
+      <form id="login-form" action="javascript:void(0)">
+        <label>教师账号
+          <input id="username" type="text" autocomplete="username" required>
+        </label>
+        <label>密码
+          <input id="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="login-error" class="error" hidden></p>
+        <button type="submit" class="btn primary">登录</button>
+      </form>
+      <p class="hint">请使用 Chrome 或新版 Edge 打开。不要使用 Internet Explorer。</p>
+      <p class="copyright">版权所有 © 乐昌国艺书院    开发者：陈老师</p>
+    </div>
+  </div>
+
+  <div id="app-page" class="page" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <strong>乐昌国艺书院</strong>
+        <span>机房课堂管理</span>
+      </div>
+      <div class="class-pill" id="class-pill">未上课</div>
+      <div class="code-box">
+        加入码 <b id="class-code">------</b>
+        <button type="button" class="btn tiny" id="btn-refresh-code" title="重新生成加入码">换码</button>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="btn primary" id="btn-class">开始上课</button>
+        <button type="button" class="btn" id="btn-password">改密码</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <button type="button" class="btn danger" id="btn-lock-all">锁屏全部</button>
+      <button type="button" class="btn" id="btn-unlock-all">解锁全部</button>
+      <button type="button" class="btn" id="btn-announce">发公告</button>
+      <button type="button" class="btn" id="btn-question">发题目</button>
+      <button type="button" class="btn" id="btn-file" title="可发送 C++ 代码（.cpp .h .hpp .cc .cxx .c）以及 .txt .in .out .md 等资料">发文件</button>
+      <input id="file-input" type="file" hidden>
+      <button type="button" class="btn" id="btn-restrict">限制网页游戏和下载</button>
+      <button type="button" class="btn" id="btn-restrict-lists">编辑限制名单</button>
+      <button type="button" class="btn" id="btn-broadcast">广播教师屏幕</button>
+      <label class="shrink-opt" id="shrink-opt" title="勾选后向学生广播缩小后的画面，节省带宽，学生窗口更合适；取消则恢复原大小">
+        <input type="checkbox" id="chk-shrink-screen">
+        <span>缩小屏幕</span>
+      </label>
+      <button type="button" class="btn" id="btn-broadcast-image">广播图片</button>
+      <input id="broadcast-input" type="file" accept="image/*" hidden>
+      <button type="button" class="btn" id="btn-desktop" title="上传壁纸并下发到学生机，可锁定不让学生更改">设置默认桌面</button>
+      <button type="button" class="btn" id="btn-desktop-unlock" title="解除锁定并恢复学生机原来的壁纸">解除桌面锁定</button>
+    </div>
+    <p class="tool-hint">发文件支持 C++ 代码（.cpp .h .hpp .cc .cxx .c .h++）和 .txt .in .out .md 等，学生机保存后可用资源管理器打开。课堂下发的资料不受上网限制影响。设置默认桌面会把壁纸下发到已加入的学生机并可锁定；下课或学生机重启后仍然保持，直到老师点「解除桌面锁定」。</p>
+
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="wall">屏幕墙</button>
+      <button type="button" class="tab" data-tab="list">学生名单</button>
+    </nav>
+
+    <main class="layout">
+      <aside class="sidebar" id="panel-list">
+        <div class="side-head">
+          <h2>学生机</h2>
+          <span id="student-summary">在线 0</span>
+        </div>
+        <ul id="student-list" class="student-list"></ul>
+      </aside>
+      <section class="wall-wrap" id="panel-wall">
+        <div id="wall-empty" class="empty">开始上课后，已加入的学生机才会传来屏幕缩略图。</div>
+        <div id="screen-wall" class="screen-wall"></div>
+      </section>
+    </main>
+    <footer class="app-footer">版权所有 © 乐昌国艺书院    开发者：陈老师</footer>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card" id="modal-card"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

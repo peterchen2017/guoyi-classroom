@@ -1,1 +1,202 @@
-# guoyi-classroom
+# 乐昌国艺书院 · 机房课堂管理（一期）
+
+**版权所有 © 乐昌国艺书院    开发者：陈老师**
+
+老师在机房管理本班已安装客户端的 Windows 学生机。只有老师点击「开始上课」后才传送屏幕，「下课」后立即停止。学生机始终显示「课堂管理运行中」窗口或托盘图标。
+
+**不做**键盘记录、剪贴板读取、隐藏进程、课后继续抓屏、远程操控学生机、校外访问。
+
+支持系统：**Windows 7 SP1 / 8.1 / 10 / 11**（同时提供 64 位和 32 位安装包与绿色版）。手机只需和教师机在同一机房 WiFi，用浏览器打开控制台，不用装 App。
+
+Windows 安装包和绿色版不放进本仓库。请到 [GitHub Releases](https://github.com/peterchen2017/guoyi-classroom/releases) 下载 v1.2.1。下文的 `dist/` 是在本机重新编译时的输出目录。
+
+---
+
+## 一、安装（教师机 / 学生机）
+
+安装包和绿色版都在 `dist/` 目录。请按电脑的 **32 / 64 位** 选用对应包：
+
+- 查看方法：打开「计算机」（或「此电脑」）→ 右键「属性」→ 看「系统类型」。
+- 写着「64 位操作系统」：用 **x64** 包（优先）。
+- 写着「32 位操作系统」：必须用 **x86** 包，**不要用 x64**，否则会装不上或打不开。
+- 很多机房的 Windows 7 是 32 位，请不要只发 x64 包。
+
+| 用途 | 64 位（x64） | 32 位（x86） |
+| --- | --- | --- |
+| 教师机安装包 | `乐昌国艺书院-机房课堂管理-教师机-安装包-x64.exe` | `……教师机-安装包-x86.exe` |
+| 学生机安装包 | `乐昌国艺书院-机房课堂管理-学生机-安装包-x64.exe` | `……学生机-安装包-x86.exe` |
+| 教师机绿色版 | `……教师机-绿色版-Win7-x64.zip`（英文名 `Guoyi-Teacher-Win7-x64.zip`） | `Guoyi-Teacher-Win7-x86.zip` |
+| 学生机绿色版 | `……学生机-绿色版-Win7-x64.zip`（英文名 `Guoyi-Student-Win7-x64.zip`） | `Guoyi-Student-Win7-x86.zip` |
+
+安装包已内置 **Python 3.8.10**，以及 Win7 常缺的 **UCRT / VC++ 运行库 DLL**（`ucrtbase.dll`、`api-ms-win-crt-*.dll`、`msvcp140.dll` 等），一般**不必再手动安装 Python、不必先打 KB2999226**。
+
+**默认安装到当前用户目录**（`%LOCALAPPDATA%\GuoyiClassroom\Teacher` 或 `Student`，例如 `C:\Users\老师\AppData\Local\GuoyiClassroom\...`），**不需要管理员权限**。卸载信息写在当前用户注册表。若以前用旧包在「Program Files」下安装失败，请改用本版安装包或绿色版，不要继续用旧的管理员安装包。
+
+### 教师机
+
+1. 在教师机上双击对应位数的「教师机-安装包」，按向导安装（无需管理员）。
+2. 安装结束后可勾选立即启动，或双击桌面上的 **「机房课堂管理-教师机」**。
+3. 会弹出控制台黑窗口（显示本机局域网 IP），并自动用浏览器打开 http://127.0.0.1:8765 。
+4. **请使用 Chrome 或新版 Edge 打开控制台，不要用 Internet Explorer。** Windows 7 请安装 [Chrome 109](https://www.google.com/chrome/)（Win7 能用的最后一版）。
+5. 用默认教师账号登录（见下方），登录后立刻在右上角「改密码」。
+6. 把黑窗口里显示的 `http://教师机IP:8765` 告诉自己（手机访问）和学生（必要时手填 IP）。
+7. 安装程序会**尝试**放行防火墙 **TCP 8765**、**UDP 8766**；没有管理员权限时这一步可能失败，但安装仍会完成。若手机或学生机连不上，请在「Windows 防火墙」中允许该程序或这两端口，或请有管理员权限的老师协助。
+
+### 学生机
+
+1. 在每台学生机上双击对应位数的「学生机-安装包」安装（无需管理员）。
+2. 可勾选「开机自动启动」。
+3. 安装后桌面会出现 **「机房课堂管理-学生机」**，双击后出现「课堂管理运行中」窗口（以及托盘图标）。
+4. 在连接窗口填写：学生姓名或机位号、教师机 IP，课堂加入码可选（老师控制台顶部可见）。也可点「自动发现」（需同一局域网且教师端已启动）。
+5. 无加入码时，老师在控制台点「允许加入」后才会进入课堂。
+6. 以后若要改 IP 或姓名：开始菜单 → 乐昌国艺书院 → **更改连接设置**。
+
+### 免安装绿色版（解压即可运行）
+
+若安装向导仍然失败，或希望先试用：把绿色版 zip 解压到**较短路径**（建议 `C:\GuoyiTeacher` 或 `C:\GuoyiStudent`），再双击 `start_teacher.cmd` / `start_student.cmd`。不必管理员。个别 Win7 处理中文文件名不顺利时，请改用英文短文件名那一份（如 `Guoyi-Teacher-Win7-x64.zip`）。
+
+### 手机（机房 WiFi）
+
+在手机浏览器打开：`http://教师机局域网IP:8765`（与教师机同一 WiFi）。登录同一教师账号后，可看屏幕墙、点开单人画面、锁屏/解锁、发公告。先不做独立 App，也不能在校外访问。
+
+---
+
+## 二、默认教师账号
+
+- 用户名：`teacher`
+- 默认密码：**请看本段下一行，首次登录后必须修改。**
+- 默认密码：`ChangeMe@2026`
+
+修改方式：
+
+- 控制台右上角「改密码」；或
+- 在教师机安装目录运行：`python\python.exe -m server --set-password`
+
+密码只以哈希保存在教师机的 `%ProgramData%` 或安装目录上级策略：实际写入应用数据目录 `data/state.json`（相对启动目录）。请勿把真实密码提交到仓库或发给无关人员。
+
+---
+
+## 三、上课怎么用（一期功能）
+
+1. 学生机连上后，控制台左侧显示名单和在线状态。带加入码的会自动批准，否则点「允许加入」。
+2. 点 **开始上课**，屏幕墙开始出现缩略图；点某个学生可放大查看。
+3. **锁屏全部** 会在学生机弹出置顶全屏「请看老师」（只能由老师解锁，下课也会自动解开）。
+4. 可发公告、发题目、把文件发到学生机（保存在学生机「课堂文件」文件夹）。
+   **发文件支持 C++ 代码**（`.cpp` `.h` `.hpp` `.cc` `.cxx` `.c` `.h++`）以及 `.txt` `.in` `.out` `.md` 等常见资料（也可发其它类型）。学生可用资源管理器打开。通过本课堂软件下发的资料**不受**上网限制拦截。
+5. **广播教师屏幕**：在教师机本机启动时，服务端会用 Windows 7 就有的 GDI BitBlt 采集教师屏幕。若采集失败，可用「广播图片」上传一张图。用手机或局域网 IP 打开控制台时，浏览器不一定允许共享屏幕（需要 https 或本机 127.0.0.1）。
+   控制台工具栏有醒目的 **「缩小屏幕」** 勾选：勾选后向学生广播缩小后的画面（最长边约 800 像素），节省带宽，学生窗口更合适；取消勾选即恢复原大小。
+6. **限制网页游戏和随意下载**：点「开始上课」后默认开启，控制台可在下课前临时关闭。下课或关闭限制后，学生机恢复原来的网络设置，不会把代理留在机器上。学生机可见提示「上课期间已限制网页游戏和下载」。
+   默认拦截 4399、7k7k、3366、2144 等小游戏门户，以及常见网盘/下载站；并拦截 `.exe` `.msi` `.bat` `.cmd` `.scr` `.zip` `.rar` `.7z` `.iso` `.apk` `.torrent` 等下载（HTTP 可看路径，HTTPS 只按域名拦截，**不解密、不装证书**）。老师可在「编辑限制名单」中增删域名，或把教学网站加入白名单。教师机地址、课堂控制台和学生收文件始终放行。
+7. **设置默认桌面**：控制台「设置默认桌面」可上传 jpg / png / bmp 壁纸，一键下发到已加入（在线或之后重新连上）的学生机并设为桌面背景。默认同时开启「锁定桌面」：学生不能通过系统个性化或桌面右键更改壁纸（使用 Windows 7 即有的 `SPI_SETDESKWALLPAPER` 和 HKCU 策略 `NoChangingWallpaper`、`NoDispBackgroundPage`）。锁定状态与上课无关，下课或学生机重启后仍然保持，直到老师点「解除桌面锁定」。解除后会尝试恢复该学生机锁定前保存的壁纸和策略。学生端启动时若仍处于锁定，会重新应用壁纸。
+8. 点 **下课**：学生机立刻停止传屏并关闭上网限制、还原网络设置，服务器丢弃画面缓存。默认桌面锁定不会因下课而解除。
+
+---
+
+## 四、Windows 7 兼容说明与运行库
+
+| 项目 | 策略 |
+| --- | --- |
+| 编程语言 | Python 3.8 语法（Win7 官方最后支持的版本是 3.8.10） |
+| 安装包 | 内置官方嵌入式 Python 3.8.10，老师通常不用再装 Python |
+| 截屏 | GDI `BitBlt` / `GetDIBits`（Win7 即有）。**不用** Windows.Graphics.Capture（Win10 才有） |
+| 锁屏 | 置顶全屏 Win32 窗口 |
+| 托盘 | `Shell_NotifyIcon`（Win7 即有） |
+| 界面工具包 | 不依赖 WinUI、.NET 5+、tkinter（嵌入式 Python 不含 Tk） |
+| 控制台网页 | 避免可选链、`??`、ES2022+；请用 Chrome / Edge，不支持 IE |
+| Visual C++ / UCRT | 安装包和绿色版已内置官方可再发行 DLL：`ucrtbase.dll`、`api-ms-win-crt-*.dll`、`vcruntime140.dll`、`msvcp140.dll` 等（来自微软 VC++ 2015–2022 运行库与 Windows SDK Universal CRT Redistributable）。Win7 不必先自行安装 KB2999226 或 VC 运行库。64 位包装 x64 DLL，32 位包装 x86 DLL。 |
+
+Windows 10 / 11 同样使用这套安装包即可。本软件需要 **Windows 7 SP1** 或更高版本（未打 SP1 的 Win7 仍可能无法运行）。
+
+若启动失败：先确认系统是 32 还是 64 位并换用对应的包；再改用绿色版解压到短路径（如 `C:\GuoyiTeacher`）后双击 `start_teacher.cmd`。
+
+---
+
+## 五、Linux 开发机验证（模拟学生端）
+
+本项目可在 Linux 上验证核心流程（模拟画面 + 打印状态，没有 Windows 锁屏覆盖层和托盘）。
+
+```bash
+cd classroom-lab
+./start_verify.sh
+```
+
+或：
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python tests/test_flow.py
+```
+
+源码方式启动教师机 / 学生机：
+
+```bash
+./start_teacher.sh          # 浏览器打开 http://127.0.0.1:8765
+./start_student.sh --name 学生甲 --code 加入码
+```
+
+验证覆盖：登录、批准、上课、缩略图、单人查看、锁屏/解锁、公告、发文件（含 .cpp）、广播与「缩小屏幕」、上网限制的开启/拦截/关闭还原、默认桌面设置/锁定/重启后保持/解除恢复、下课后停止传屏。另可单独运行 `tests/test_web_filter.py`、`tests/test_desktop.py`。说明见 `tests/README.md`。
+
+---
+
+## 六、不用安装包时的运行方式（备选）
+
+若只有源码、或要在已安装 **官方 Python 3.8.10** 的 Win7 上手动运行：
+
+1. 安装 [Python 3.8.10](https://www.python.org/ftp/python/3.8.10/python-3.8.10-amd64.exe)（32 位系统用 `python-3.8.10.exe`），安装时勾选 Tcl/Tk 与 pip。建议勾选 “Add Python to PATH”。
+2. 在解压后的项目目录打开命令提示符：
+
+```bat
+python -m pip install -r requirements-py38.txt
+start_teacher.bat
+```
+
+学生机用 `start_student.bat`。更建议直接使用上一节的安装包。
+
+改密码：`python -m server --set-password`
+
+---
+
+## 七、重新编译 Windows 安装包
+
+在已安装 [NSIS](https://nsis.sourceforge.io/) 的机器上（本 Linux 开发机已用 `makensis` 编译过）：
+
+```bash
+python3 scripts/build_windows_installers.py
+```
+
+脚本会下载官方 Python 3.8.10 嵌入式包、Windows 轮子，以及微软官方 VC++ / UCRT 可再发行 DLL，生成 `dist/` 下的安装包（x64、x86）和绿色版 zip。构建机需要 `makensis`、`7z` 或 `cabextract`、以及 `msiextract`（msitools）。
+
+也可在 Windows 上安装 NSIS 后，把 `packaging/staging-*-amd64` 准备好，再编译 `packaging/teacher.nsi` 与 `packaging/student.nsi`。另附 `packaging/teacher.iss`、`student.iss`，供已安装 Inno Setup 的 Windows 电脑备用。
+
+---
+
+## 八、已知限制
+
+- 手机和教师控制台必须与学生机在同一机房局域网，一期不做校外中转。
+- Windows 7 的 IE 无法使用本控制台；请用 Chrome 109 或可用的 Edge / 其他 Chromium 浏览器。
+- 用 `http://局域网IP` 打开控制台时，浏览器通常不允许「共享屏幕」API，广播以教师机本机采集或「广播图片」为准。
+- 上网限制依赖 Windows 系统代理（WinINET），对会使用系统代理的 IE / 部分 Chrome / Edge 生效。便携浏览器自带代理、Firefox 默认不用系统代理、VPN、自己改 hosts 或手动关掉系统代理，仍可能绕过；**不保证 100% 封死**。HTTPS 只按主机名/SNI 拦截，不会安装证书或解密流量。
+- Linux / 模拟模式没有全屏锁屏覆盖层和托盘，只打印状态并发送素色模拟帧；Linux 上验证过滤逻辑和本机代理，不修改系统代理。默认桌面在 Linux 上为模拟实现（记录要设置的图片、锁定开关、解锁后恢复），不调用 Windows API。
+- 默认桌面锁定写入当前用户（HKCU）策略，并定期检测壁纸是否被改回。若学生账户具有管理员权限，仍可能自行改注册表或用其他工具解除；这是已知限制，机房应使用普通学生账户。不禁止移动桌面图标。
+- 嵌入式运行库不包含 tkinter，Windows 界面走纯 Win32 API。
+- 学生仍可用 Ctrl+Alt+Del 等系统方式切出锁屏（有意为之，避免做成无法退出的隐蔽软件）。
+- 一期不含：远程协助操作学生机、收取作业、课后简报。
+- 未安装 Windows 7 SP1 的机器仍可能无法运行（Python 3.8 与 UCRT 都要求 SP1）。极旧的安全软件可能拦截解压出的 python.exe。
+- 没有管理员权限时，安装程序无法写入系统防火墙规则；软件仍可安装，但局域网访问 8765/8766 可能被防火墙挡住，需手动放行。
+- 绿色版请解压到短路径。个别 Win7 环境处理中文文件名失败时，请改用 `Guoyi-Teacher-Win7-x64.zip` 等英文文件名。
+
+版权所有 © 乐昌国艺书院    开发者：陈老师
+
+## 九、项目结构（摘录）
+
+- `server/` 教师机服务（FastAPI + WebSocket，监听 `0.0.0.0:8765`）
+- `web/` 教师机与手机共用的中文控制台
+- `student/` 学生端（Windows 窗口/托盘/GDI 截屏；Linux 模拟模式）
+- `shared/win_gdi.py` Win7 兼容截屏
+- `packaging/` NSIS 脚本与打包器
+- `student/wallpaper.py` 默认桌面（Linux 可测模拟；Windows 走 `student/win_wallpaper.py`）
+- `tests/test_flow.py` 核心流程验证
+- `tests/test_desktop.py` 默认桌面锁定验证
+- `乐昌国艺书院-机房课堂管理-使用说明.txt` 给老师的简要使用说明（UTF-8 BOM）
+- `dist/` Windows 安装包输出目录

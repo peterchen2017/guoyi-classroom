@@ -1,0 +1,8 @@
+# Linux 开发机或 Windows 10/11（Python 3.8 及以上）。
+# Windows 7 请使用 requirements-py38.txt + 官方 Python 3.8.10。
+fastapi>=0.103
+uvicorn>=0.23
+pillow>=10
+python-multipart>=0.0.9
+websockets>=12
+httpx>=0.27
