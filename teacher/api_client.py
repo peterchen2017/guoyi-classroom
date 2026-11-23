@@ -144,6 +144,14 @@ class TeacherClient(object):
             headers.update(extra)
         return headers
 
+    def _auth_was_sent(self, with_auth):
+        return bool(with_auth and self.token)
+
+    def _raise_status(self, status, message, payload, with_auth):
+        if status == 401 and self._auth_was_sent(with_auth):
+            raise AuthExpired(message or "登录已过期，请重新登录", status=401, payload=payload)
+        raise TeacherApiError(message or "请求失败", status=status, payload=payload)
+
     def request(self, method, path, json_body=None, files=None, query=None,
                 raw=False, timeout=None, with_auth=True):
         headers = self._headers(with_auth=with_auth)
@@ -169,7 +177,7 @@ class TeacherClient(object):
             except Exception:
                 ctype = ""
             if raw:
-                if status == 401:
+                if status == 401 and self._auth_was_sent(with_auth):
                     raise AuthExpired("登录已过期，请重新登录", status=401)
                 return body, status, ctype
             payload = None
@@ -191,9 +199,7 @@ class TeacherClient(object):
                         message = text[:300]
                 except Exception:
                     pass
-            if status == 401:
-                raise AuthExpired(message or "登录已过期，请重新登录", status=401, payload=payload)
-            raise TeacherApiError(message, status=status, payload=payload)
+            self._raise_status(status, message, payload, with_auth)
         except URLError as exc:
             reason = getattr(exc, "reason", exc)
             raise TeacherApiError("无法连接课堂服务：%s" % reason)
@@ -209,14 +215,10 @@ class TeacherClient(object):
             except (ValueError, UnicodeDecodeError):
                 raise TeacherApiError("服务返回了无法解析的数据", status=status)
             if status >= 400:
-                if status == 401:
-                    raise AuthExpired(_detail(payload), status=401, payload=payload)
-                raise TeacherApiError(_detail(payload), status=status, payload=payload)
+                self._raise_status(status, _detail(payload), payload, with_auth)
             return payload
         if status >= 400:
-            if status == 401:
-                raise AuthExpired("登录已过期，请重新登录", status=401)
-            raise TeacherApiError("请求失败", status=status)
+            self._raise_status(status, "请求失败", None, with_auth)
         return body
 
     def info(self):

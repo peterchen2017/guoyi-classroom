@@ -218,6 +218,12 @@ class Store(object):
 
         return sorted(self.students.values(), key=key)
 
+    def reset_password_to_default(self):
+        """把教师密码恢复为默认，并作废已有教师登录会话。"""
+        self.password_hash = auth.hash_password(config.DEFAULT_TEACHER_PASSWORD)
+        self.sessions = {}
+        self.save()
+
     def create_session(self, username):
         token = auth.new_token()
         self.sessions[token] = {
