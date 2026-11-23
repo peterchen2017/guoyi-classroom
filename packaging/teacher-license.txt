@@ -3,6 +3,6 @@
 版权所有 © 乐昌国艺书院    开发者：陈老师
 
 请将本程序安装在教师机上，并在同一机房 WiFi 下使用。
-控制台请用 Chrome 或新版 Edge 打开，不要使用 Internet Explorer。
-Windows 7 请使用 Chrome 109（该系统能安装的最后一版）。
+教师机使用软件自带的主窗口上课，不必预先安装 Chrome 或 Edge，也不必使用 Internet Explorer。
+仅当用手机打开网页控制台时，请使用手机自带浏览器。
 首次登录后请立即修改默认教师密码（默认账号见 README）。

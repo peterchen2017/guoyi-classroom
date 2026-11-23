@@ -61,7 +61,7 @@ APP_FILES = [
     "README.md",
     "乐昌国艺书院-机房课堂管理-使用说明.txt",
 ]
-APP_DIRS = ["server", "student", "shared", "web"]
+APP_DIRS = ["server", "student", "shared", "web", "teacher"]
 
 TEACHER_KEEP = [
     "launch_teacher.py",
@@ -751,7 +751,7 @@ def slim_portable(src_stage, dest, role):
     keep_files = TEACHER_KEEP if role == "teacher" else STUDENT_KEEP
     keep_dirs = ["python", "shared"]
     if role == "teacher":
-        keep_dirs += ["server", "web"]
+        keep_dirs += ["server", "web", "teacher"]
     else:
         keep_dirs += ["student"]
     for name in keep_files:
@@ -871,7 +871,7 @@ def build_source_zip():
         "portable-tmp", "wheels-amd64", "wheels-win32",
     }
     skip_suffixes = (".zip", ".exe", ".pyc", ".pyo", ".b64")
-    include_top_dirs = {"packaging", "scripts", "server", "shared", "student", "tests", "web"}
+    include_top_dirs = {"packaging", "scripts", "server", "shared", "student", "teacher", "tests", "web"}
     with zipfile.ZipFile(zpath, "w", **_zip_write_kwargs()) as zf:
         for path in sorted(ROOT.iterdir()):
             if path.name.startswith(".") and path.name not in (".gitignore",):

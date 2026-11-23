@@ -1,10 +1,11 @@
-验证时间（Asia/Shanghai）：2026-11-23 15:19
+验证时间（Asia/Shanghai）：2026-11-23 16:33
 
 ./start_verify.sh
 
-tests/test_win7_deps.py：通过 28，失败 0
+tests/test_win7_deps.py：通过 35，失败 0
+tests/test_teacher_client.py：通过 46，失败 0
 tests/test_desktop.py：通过 14，失败 0
 tests/test_web_filter.py：通过 20，失败 0
 tests/test_flow.py：通过 29，失败 0
 
-本轮为 1.2.3：覆盖安装清理旧程序文件、窗口/日志标明版本号后的功能回归，结果全部通过。本机为 Linux，未做 Windows 7 真机测试。
+本轮为 1.2.4：教师机增加 Win32 原生主窗口（不必再用浏览器上课），API 客户端与状态映射测试通过，原有功能回归全部通过。本机为 Linux，未做 Windows 7 真机测试，也无法在此环境实际拉起 Win32 GUI。

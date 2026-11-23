@@ -91,7 +91,7 @@ def main():
 
     # 源码侧不应再直接引用 pydantic_core
     hits = []
-    for folder in ("server", "student", "shared", "launch_teacher.py", "launch_student.py"):
+    for folder in ("server", "student", "shared", "teacher", "launch_teacher.py", "launch_student.py"):
         path = ROOT / folder
         files = [path] if path.is_file() else list(path.rglob("*.py"))
         for f in files:
@@ -107,7 +107,7 @@ def main():
     import launch_teacher
     import launch_student
 
-    c.check("应用版本为 1.2.3", VERSION == "1.2.3", VERSION)
+    c.check("应用版本为 1.2.4", VERSION == "1.2.4", VERSION)
     c.check("server.config.VERSION 与 shared.version 一致", server_config.VERSION == VERSION)
 
     # 启动日志写明 VERSION，便于从日志判断是否跑到新版
@@ -136,7 +136,7 @@ def main():
     c.check("存在升级清理脚本 upgrade-cleanup.nsh", (ROOT / "packaging" / "upgrade-cleanup.nsh").is_file())
     for role, nsi in (("教师机", teacher_nsi), ("学生机", student_nsi)):
         c.check("%s NSIS 安装前调用升级清理" % role, "!insertmacro GuoyiCleanupOldProgramFiles" in nsi and nsi.find("!insertmacro GuoyiCleanupOldProgramFiles") < nsi.find("File /r"))
-        c.check("%s NSIS 版本为 1.2.3" % role, '!define APP_VERSION "1.2.3"' in nsi and "${APP_VERSION}" in nsi)
+        c.check("%s NSIS 版本为 1.2.4" % role, '!define APP_VERSION "1.2.4"' in nsi and "${APP_VERSION}" in nsi)
     c.check("升级清理会删除旧 launch 脚本", "launch_teacher.py" in cleanup and "launch_student.py" in cleanup and "start_teacher.cmd" in cleanup)
     c.check("升级清理会移除整棵内置 Python/site-packages", 'RMDir /r "$INSTDIR\\python"' in cleanup)
     c.check("升级清理说明保留日志和 data", "data" in cleanup and "*.log" in cleanup)
@@ -144,6 +144,18 @@ def main():
     guide = (ROOT / "乐昌国艺书院-机房课堂管理-使用说明.txt").read_text(encoding="utf-8")
     c.check("使用说明提示升级前可先卸载旧版", "升级前可先卸载旧版" in guide or "建议先卸载旧版再安装本版" in guide)
     c.check("使用说明提示旧行号/_pydantic_core 仍是旧程序", "_pydantic_core" in guide and "30 行" in guide)
+
+
+    build_src = (ROOT / "scripts" / "build_windows_installers.py").read_text(encoding="utf-8")
+    c.check("安装包会复制 teacher/ 目录", '"teacher"' in build_src and "APP_DIRS" in build_src)
+    c.check("绿色版教师机保留 teacher/", 'keep_dirs += ["server", "web", "teacher"]' in build_src)
+    c.check("升级清理会删除旧 teacher 目录", 'RMDir /r "$INSTDIR\\teacher"' in cleanup)
+
+    launch_src = (ROOT / "launch_teacher.py").read_text(encoding="utf-8")
+    c.check("教师机启动后打开原生主窗口", "run_main_window" in launch_src and "teacher.win_console" in launch_src)
+    c.check("默认不再自动打开浏览器", "_open_when_ready" not in launch_src)
+    c.check("使用说明以软件主窗口为主", "教师主窗口" in guide and "不必预先安装 Chrome" in guide)
+    c.check("使用说明版本写 1.2.4", "1.2.4" in guide)
 
     if not c.summary():
         sys.exit(1)

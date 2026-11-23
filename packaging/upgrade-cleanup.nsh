@@ -43,6 +43,7 @@
   RMDir /r "$INSTDIR\student"
   RMDir /r "$INSTDIR\shared"
   RMDir /r "$INSTDIR\web"
+  RMDir /r "$INSTDIR\teacher"
   ; 整棵内置 Python（含 site-packages 里残留的 pydantic / pydantic_core）
   RMDir /r "$INSTDIR\python"
 
