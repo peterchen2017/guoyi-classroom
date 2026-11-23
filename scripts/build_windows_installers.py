@@ -94,7 +94,7 @@ def download(url, dest, sha256=None, min_size=10000):
             log("已缓存：%s" % dest.name)
             return dest
     log("下载 %s ..." % url)
-    req = Request(url, headers={"User-Agent": "GuoyiClassroomBuilder/1.2"})
+    req = Request(url, headers={"User-Agent": "GuoyiClassroomBuilder/1.2.2"})
     with urlopen(req, timeout=180) as resp:
         data = resp.read()
     if sha256:
@@ -150,6 +150,90 @@ def download_wheels(arch):
     if r.returncode != 0:
         raise RuntimeError("无法下载 %s 的 Windows 轮子，请检查网络。" % arch)
     return wheel_dir
+
+
+
+def ensure_win7_safe_wheels(wheel_dir):
+    """去掉 pydantic-core，并改用 pydantic v1 的纯 Python 轮子。
+
+    Win7 教师机 1.2.1 的失败原因是：
+    ImportError: DLL load failed while importing _pydantic_core: 找不到指定的程序
+    （WinError 127 ERROR_PROC_NOT_FOUND）。_pydantic_core 由较新的 Rust/MSVC 工具链
+    编译，能被加载但缺少 Win7 上的导出函数。教师机与学生机共用同一套 site-packages。
+    """
+    wheel_dir = Path(wheel_dir)
+    for p in list(wheel_dir.glob("pydantic_core-*.whl")) + list(wheel_dir.glob("pydantic-core-*.whl")):
+        log("已移除 Win7 不兼容的轮子：%s" % p.name)
+        p.unlink()
+    native = []
+    has_pure = False
+    for p in wheel_dir.glob("pydantic-*.whl"):
+        if p.name.startswith("pydantic_core"):
+            continue
+        if "py3-none-any" in p.name:
+            has_pure = True
+        else:
+            native.append(p)
+    for p in native:
+        log("已移除带原生扩展的 pydantic 轮子：%s" % p.name)
+        p.unlink()
+    if not has_pure:
+        cmd = [
+            sys.executable, "-m", "pip", "download", "pydantic==1.10.18",
+            "--only-binary=:all:",
+            "--no-deps",
+            "-d", str(wheel_dir),
+            "--python-version", "38",
+            "--abi", "none",
+            "--platform", "any",
+        ]
+        log("下载 pydantic 1.10.18 纯 Python 轮子：%s" % " ".join(cmd))
+        r = subprocess.run(cmd)
+        if r.returncode != 0:
+            raise RuntimeError("无法下载 pydantic-1.10.18-py3-none-any.whl")
+        # 若仍下到了带扩展的轮子，再清一次
+        for p in list(wheel_dir.glob("pydantic-*.whl")):
+            if p.name.startswith("pydantic_core"):
+                p.unlink()
+                continue
+            if "py3-none-any" not in p.name:
+                p.unlink()
+        if not any("py3-none-any" in p.name and p.name.startswith("pydantic-1.") for p in wheel_dir.glob("pydantic-*.whl")):
+            raise RuntimeError("缺少 pydantic 1.x 纯 Python 轮子")
+    missing = []
+    if not any(wheel_dir.glob("exceptiongroup-*.whl")):
+        missing.append("exceptiongroup==1.2.2")
+    if missing:
+        cmd = [
+            sys.executable, "-m", "pip", "download",
+            *missing,
+            "--only-binary=:all:",
+            "-d", str(wheel_dir),
+            "--python-version", "38",
+        ]
+        log("补下 Python 3.8 需要的纯 Python 依赖：%s" % " ".join(missing))
+        r = subprocess.run(cmd)
+        if r.returncode != 0:
+            raise RuntimeError("无法下载：%s" % ", ".join(missing))
+
+
+def assert_no_pydantic_core(site):
+    site = Path(site)
+    hits = [p for p in site.rglob("*") if "pydantic_core" in p.name.lower() or "pydantic-core" in p.name.lower()]
+    if hits:
+        raise RuntimeError("site-packages 中不得包含 pydantic_core：%s" % ", ".join(str(p.relative_to(site)) for p in hits[:8]))
+    ver = None
+    for cand in (site / "pydantic" / "version.py", site / "pydantic" / "__init__.py"):
+        if cand.is_file():
+            for line in cand.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.strip().startswith("VERSION") or line.strip().startswith("__version__"):
+                    ver = line
+                    break
+        if ver:
+            break
+    log("已确认无 pydantic_core；pydantic 版本信息：%s" % (ver or "未读取到"))
+    if ver and ("2." in ver and "1.10" not in ver):
+        raise RuntimeError("期望打包 Pydantic v1，实际：%s" % ver)
 
 
 def unpack_wheels(wheel_dir, site):
@@ -251,7 +335,7 @@ def _extract_burn_payloads(bundle_exe, dest):
 def _find_ucrt_payloads():
     """从官方 VS 频道清单定位 Universal CRT Redistributable MSI 与 CAB。"""
     log("查询官方 Universal CRT 可再发行包地址…")
-    raw = urlopen(Request(VS_CHANNEL, headers={"User-Agent": "GuoyiClassroomBuilder/1.2"}), timeout=120).read()
+    raw = urlopen(Request(VS_CHANNEL, headers={"User-Agent": "GuoyiClassroomBuilder/1.2.2"}), timeout=120).read()
     channel = json.loads(raw)
     vsman_url = None
     for item in channel.get("channelItems") or []:
@@ -264,7 +348,7 @@ def _find_ucrt_payloads():
             break
     if not vsman_url:
         raise RuntimeError("无法在 VS 频道清单中找到 vsman")
-    man = json.loads(urlopen(Request(vsman_url, headers={"User-Agent": "GuoyiClassroomBuilder/1.2"}), timeout=180).read())
+    man = json.loads(urlopen(Request(vsman_url, headers={"User-Agent": "GuoyiClassroomBuilder/1.2.2"}), timeout=180).read())
     for pkg in man.get("packages") or []:
         if pkg.get("id") == "Microsoft.Windows.UniversalCRT.Redistributable.Msi":
             files = []
@@ -395,13 +479,19 @@ def write_cmd(path, lines):
     Path(path).write_bytes(text.encode("gbk"))
 
 
-def fail_help_lines():
+def fail_help_lines(log_name):
     return [
         "echo.",
-        "echo 启动失败。请逐条检查：",
+        "echo 启动失败。请打开下面的日志文件（记事本即可），并把它发给开发者：",
+        "echo %LOG%",
+        "echo.",
+        "echo 请同时逐条检查：",
         "echo 1. 打开“计算机”右键 - 属性，查看“系统类型”。",
         "echo    32 位操作系统必须用 x86 软件包，不要用 64 位（x64）包。",
-        "echo 2. 请改用本次提供的新安装包（默认装到用户目录，无需管理员）或绿色版 zip。",
+        "echo 2. 教师机默认安装目录：",
+        "echo    C:\\Users\\用户名\\AppData\\Local\\GuoyiClassroom\\Teacher",
+        "echo    学生机默认安装目录：",
+        "echo    C:\\Users\\用户名\\AppData\\Local\\GuoyiClassroom\\Student",
         "echo 3. 本软件需要 Windows 7 SP1 或更高版本（也支持 Windows 8.1 / 10 / 11）。",
         "echo 4. 请把绿色版解压到较短路径后再试，例如 C:\\GuoyiTeacher 或 C:\\GuoyiStudent。",
         "echo.",
@@ -411,32 +501,58 @@ def fail_help_lines():
 
 def write_launch_scripts(dest, arch_label):
     dest = Path(dest)
-    write_cmd(dest / "start_teacher.cmd", [
+    teacher_head = [
         "@echo off",
         "setlocal",
         "cd /d \"%~dp0\"",
         "rem Win7 上 chcp 65001 可能失败，这里只用系统中文代码页，失败也不退出",
         "chcp 936 >nul 2>&1",
+        "set \"LOG=%~dp0start_teacher.log\"",
+        "echo.>>\"%LOG%\"",
+        "echo ===== %date% %time% 启动教师机 =====>>\"%LOG%\"",
+        "echo INSTDIR=%CD%>>\"%LOG%\"",
         "echo ========================================",
         "echo  乐昌国艺书院  机房课堂管理（教师机）",
+        "echo  课堂管理运行中",
         "echo  版权所有  乐昌国艺书院    开发者：陈老师",
         "echo ========================================",
         "echo.",
+        "echo 日志文件：%LOG%",
+        "echo.",
         "if not exist \"%~dp0python\\python.exe\" (",
         "  echo [错误] 未找到内置 Python。请确认已完整安装，或完整解压绿色版。",
+        "  echo [错误] 未找到内置 Python。>>\"%LOG%\"",
         "  goto :fail",
         ")",
+        "echo 正在检测 python.exe ...>>\"%LOG%\"",
+        "\"%~dp0python\\python.exe\" -c \"import sys; print(sys.version)\" >>\"%LOG%\" 2>&1",
+        "if errorlevel 1 (",
+        "  echo [错误] python.exe 无法启动。可能是运行库无法加载，或 32/64 位软件包选错。>>\"%LOG%\"",
+        "  echo [错误] python.exe 无法启动。可能是运行库无法加载，或 32/64 位软件包选错。",
+        "  goto :fail",
+        ")",
+        "echo 正在启动课堂服务 ...>>\"%LOG%\"",
+        "rem 主程序自己把输出写入 start_teacher.log，这里不重定向，以便黑窗口仍显示本机地址",
         "\"%~dp0python\\python.exe\" launch_teacher.py",
-        "if errorlevel 1 goto :fail",
+        "set ERR=%ERRORLEVEL%",
+        "if not \"%ERR%\"==\"0\" (",
+        "  echo [错误] launch_teacher.py 退出码 %ERR%>>\"%LOG%\"",
+        "  goto :fail",
+        ")",
         "goto :eof",
         ":fail",
-    ] + fail_help_lines())
+    ]
+    write_cmd(dest / "start_teacher.cmd", teacher_head + fail_help_lines("start_teacher.log"))
 
-    write_cmd(dest / "start_student.cmd", [
+    student_head = [
         "@echo off",
         "setlocal",
         "cd /d \"%~dp0\"",
         "chcp 936 >nul 2>&1",
+        "set \"LOG=%~dp0start_student.log\"",
+        "echo.>>\"%LOG%\"",
+        "echo ===== %date% %time% 启动学生机 =====>>\"%LOG%\"",
+        "echo INSTDIR=%CD%>>\"%LOG%\"",
         "echo ========================================",
         "echo  乐昌国艺书院  机房课堂管理（学生机）",
         "echo  课堂管理运行中",
@@ -445,27 +561,41 @@ def write_launch_scripts(dest, arch_label):
         "echo.",
         "if not exist \"%~dp0python\\python.exe\" (",
         "  echo [错误] 未找到内置 Python。请确认已完整安装，或完整解压绿色版。",
+        "  echo [错误] 未找到内置 Python。>>\"%LOG%\"",
         "  goto :fail",
         ")",
-        "\"%~dp0python\\python.exe\" -c \"import sys\" >nul 2>&1",
-        "if errorlevel 1 goto :fail",
+        "echo 正在检测 python.exe ...>>\"%LOG%\"",
+        "\"%~dp0python\\python.exe\" -c \"import sys; print(sys.version)\" >>\"%LOG%\" 2>&1",
+        "if errorlevel 1 (",
+        "  echo [错误] python.exe 无法启动。可能是运行库无法加载，或 32/64 位软件包选错。>>\"%LOG%\"",
+        "  echo [错误] python.exe 无法启动。可能是运行库无法加载，或 32/64 位软件包选错。",
+        "  goto :fail",
+        ")",
         "if exist \"%~dp0python\\pythonw.exe\" (",
         "  start \"课堂管理运行中\" \"%~dp0python\\pythonw.exe\" launch_student.py",
         ") else (",
         "  \"%~dp0python\\python.exe\" launch_student.py",
-        "  if errorlevel 1 goto :fail",
+        "  set ERR=%ERRORLEVEL%",
+        "  if not \"%ERR%\"==\"0\" (",
+        "    echo [错误] launch_student.py 退出码 %ERR%>>\"%LOG%\"",
+        "    goto :fail",
+        "  )",
         ")",
         "goto :eof",
         ":fail",
-    ] + fail_help_lines())
+    ]
+    write_cmd(dest / "start_student.cmd", student_head + fail_help_lines("start_student.log"))
 
     write_cmd(dest / "start_student_autostart.cmd", [
         "@echo off",
         "setlocal",
         "cd /d \"%~dp0\"",
         "chcp 936 >nul 2>&1",
+        "set \"LOG=%~dp0start_student.log\"",
+        "echo.>>\"%LOG%\"",
+        "echo ===== %date% %time% 开机启动学生机 =====>>\"%LOG%\"",
         "if not exist \"%~dp0python\\python.exe\" goto :fail",
-        "\"%~dp0python\\python.exe\" -c \"import sys\" >nul 2>&1",
+        "\"%~dp0python\\python.exe\" -c \"import sys\" >>\"%LOG%\" 2>&1",
         "if errorlevel 1 goto :fail",
         "if exist \"%~dp0python\\pythonw.exe\" (",
         "  start \"\" \"%~dp0python\\pythonw.exe\" launch_student.py",
@@ -474,7 +604,9 @@ def write_launch_scripts(dest, arch_label):
         ")",
         "goto :eof",
         ":fail",
+        "echo 课堂管理学生端启动失败。32 位系统请使用 x86 包；并请改用最新安装包或绿色版。>>\"%LOG%\"",
         "echo 课堂管理学生端启动失败。32 位系统请使用 x86 包；并请改用最新安装包或绿色版。",
+        "echo 请把安装目录下的 start_student.log 发给开发者。",
         "pause",
     ])
 
@@ -483,6 +615,7 @@ def write_launch_scripts(dest, arch_label):
         "setlocal",
         "cd /d \"%~dp0\"",
         "chcp 936 >nul 2>&1",
+        "set \"LOG=%~dp0start_student.log\"",
         "if not exist \"%~dp0python\\python.exe\" goto :fail",
         "\"%~dp0python\\python.exe\" -c \"import sys\" >nul 2>&1",
         "if errorlevel 1 goto :fail",
@@ -494,7 +627,7 @@ def write_launch_scripts(dest, arch_label):
         ")",
         "goto :eof",
         ":fail",
-    ] + fail_help_lines())
+    ] + fail_help_lines("start_student.log"))
 
     # 给绿色版看的简短说明（UTF-8 BOM，记事本可打开）
     tip = (
@@ -506,6 +639,11 @@ def write_launch_scripts(dest, arch_label):
         "\r\n"
         "教师机：双击 start_teacher.cmd\r\n"
         "学生机：双击 start_student.cmd\r\n"
+        "\r\n"
+        "若启动失败，请用记事本打开同目录下的 start_teacher.log 或 start_student.log，\r\n"
+        "把该文件发给开发者。安装包默认目录：\r\n"
+        "  C:\\Users\\用户名\\AppData\\Local\\GuoyiClassroom\\Teacher\r\n"
+        "  C:\\Users\\用户名\\AppData\\Local\\GuoyiClassroom\\Student\r\n"
         "\r\n"
         "本包架构：%s\r\n"
         "32 位 Windows 7 必须使用 x86 包；64 位系统优先使用 x64 包。\r\n"
@@ -543,7 +681,10 @@ def stage(arch, role):
     extract_python(arch, dest / "python")
     bundle_win_runtimes(arch, dest / "python")
     wheels = download_wheels(arch)
-    unpack_wheels(wheels, dest / "python" / "Lib" / "site-packages")
+    ensure_win7_safe_wheels(wheels)
+    site = dest / "python" / "Lib" / "site-packages"
+    unpack_wheels(wheels, site)
+    assert_no_pydantic_core(site)
     copy_app(dest, arch)
     return dest
 

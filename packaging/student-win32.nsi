@@ -19,8 +19,9 @@ BrandingText "版权所有 © 乐昌国艺书院    开发者：陈老师"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_RUN "$INSTDIR\start_student.cmd"
+!define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_TEXT "安装完成后立即启动学生端"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchStudent
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -32,17 +33,18 @@ Section "学生端程序" SecMain
   File /r "staging-student-win32\*.*"
 
   CreateDirectory "$SMPROGRAMS\乐昌国艺书院"
-  CreateShortCut "$SMPROGRAMS\乐昌国艺书院\机房课堂管理-学生机.lnk" "$INSTDIR\start_student.cmd" "" "$INSTDIR\python\pythonw.exe" 0
-  CreateShortCut "$SMPROGRAMS\乐昌国艺书院\更改连接设置.lnk" "$INSTDIR\更改连接设置.cmd" "" "$INSTDIR\python\pythonw.exe" 0
+  SetOutPath "$INSTDIR"
+  CreateShortCut "$SMPROGRAMS\乐昌国艺书院\机房课堂管理-学生机.lnk" "$INSTDIR\start_student.cmd" "" "$INSTDIR\python\pythonw.exe" 0 SW_SHOWNORMAL
+  CreateShortCut "$SMPROGRAMS\乐昌国艺书院\更改连接设置.lnk" "$INSTDIR\更改连接设置.cmd" "" "$INSTDIR\python\pythonw.exe" 0 SW_SHOWNORMAL
   CreateShortCut "$SMPROGRAMS\乐昌国艺书院\卸载学生机.lnk" "$INSTDIR\卸载学生机.exe"
-  CreateShortCut "$DESKTOP\机房课堂管理-学生机.lnk" "$INSTDIR\start_student.cmd" "" "$INSTDIR\python\pythonw.exe" 0
+  CreateShortCut "$DESKTOP\机房课堂管理-学生机.lnk" "$INSTDIR\start_student.cmd" "" "$INSTDIR\python\pythonw.exe" 0 SW_SHOWNORMAL
 
   WriteRegStr HKCU "Software\GuoyiClassroom\Student" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\卸载学生机.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomStudent" "DisplayName" "乐昌国艺书院 机房课堂管理（学生机）"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomStudent" "UninstallString" "$INSTDIR\卸载学生机.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomStudent" "Publisher" "乐昌国艺书院"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomStudent" "DisplayVersion" "1.2.1"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomStudent" "DisplayVersion" "1.2.2"
 SectionEnd
 
 Section "开机自动启动（可选）" SecAuto
@@ -60,3 +62,9 @@ Section "Uninstall"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomStudent"
   RMDir /r "$INSTDIR"
 SectionEnd
+
+Function LaunchStudent
+  ; Win7 上 MUI_FINISHPAGE_RUN 直接 Exec .cmd 常失败，改用 ShellExecute
+  SetOutPath "$INSTDIR"
+  ExecShell "open" "$INSTDIR\start_student.cmd"
+FunctionEnd

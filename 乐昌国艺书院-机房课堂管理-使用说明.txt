@@ -56,8 +56,10 @@
 四、教师机怎么用
 
 1. 双击桌面上的「机房课堂管理-教师机」（绿色版则双击 start_teacher.cmd）。
-2. 会弹出一个黑窗口（里面会显示本机局域网 IP），并自动用浏览器打开：
+2. 会弹出一个黑窗口和一个「课堂管理运行中」小窗口（里面会显示本机局域网 IP），
+   并在服务就绪后自动用浏览器打开：
    http://127.0.0.1:8765
+   只关掉浏览器不会退出课堂管理；请关闭黑色控制台窗口来退出。
 3. 默认账号：teacher
    默认密码：ChangeMe@2026
    登录后请立刻点击右上角「改密码」。
@@ -140,6 +142,17 @@
    - 先确认 32 / 64 位有没有选对（见第一节）；
    - 改用本版「用户目录安装」的新安装包，或改用绿色版解压到 C:\GuoyiTeacher（或 C:\GuoyiStudent）；
    - 需要 Windows 7 SP1；未打 SP1 时仍可能失败。
+6. 教师机启动失败（窗口一闪、弹出错误，或黑窗口里提示失败），常见于 Windows 7：
+   请用记事本打开安装目录下的 start_teacher.log，并把该文件发给开发者。
+   默认安装目录：
+     C:\Users\用户名\AppData\Local\GuoyiClassroom\Teacher
+   例如：C:\Users\Administrator\AppData\Local\GuoyiClassroom\Teacher
+   请使用 1.2.2 或更新的教师机安装包（已修复 Win7 上无法加载 pydantic 组件的问题）。
+7. 学生机启动失败：同样请把安装目录下的 start_student.log 发给开发者。
+   默认安装目录：
+     C:\Users\用户名\AppData\Local\GuoyiClassroom\Student
+   已经在 Windows 10 / 11 上正常使用 1.2.1 学生端的电脑，不必立刻重装；
+   若以后有 Windows 7 学生机，请改用 1.2.2 或更新的学生端安装包。
 
 
 版权所有 © 乐昌国艺书院    开发者：陈老师

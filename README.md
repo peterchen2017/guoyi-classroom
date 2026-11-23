@@ -8,8 +8,6 @@
 
 支持系统：**Windows 7 SP1 / 8.1 / 10 / 11**（同时提供 64 位和 32 位安装包与绿色版）。手机只需和教师机在同一机房 WiFi，用浏览器打开控制台，不用装 App。
 
-Windows 安装包和绿色版不放进本仓库。请到 [GitHub Releases](https://github.com/peterchen2017/guoyi-classroom/releases) 下载 v1.2.1。下文的 `dist/` 是在本机重新编译时的输出目录。
-
 ---
 
 ## 一、安装（教师机 / 学生机）
@@ -36,7 +34,7 @@ Windows 安装包和绿色版不放进本仓库。请到 [GitHub Releases](https
 
 1. 在教师机上双击对应位数的「教师机-安装包」，按向导安装（无需管理员）。
 2. 安装结束后可勾选立即启动，或双击桌面上的 **「机房课堂管理-教师机」**。
-3. 会弹出控制台黑窗口（显示本机局域网 IP），并自动用浏览器打开 http://127.0.0.1:8765 。
+3. 会弹出控制台黑窗口和「课堂管理运行中」提示（显示本机局域网 IP），服务就绪后自动用浏览器打开 http://127.0.0.1:8765 。只关浏览器不会退出，请关闭黑窗口退出。
 4. **请使用 Chrome 或新版 Edge 打开控制台，不要用 Internet Explorer。** Windows 7 请安装 [Chrome 109](https://www.google.com/chrome/)（Win7 能用的最后一版）。
 5. 用默认教师账号登录（见下方），登录后立刻在右上角「改密码」。
 6. 把黑窗口里显示的 `http://教师机IP:8765` 告诉自己（手机访问）和学生（必要时手填 IP）。
@@ -108,6 +106,14 @@ Windows 安装包和绿色版不放进本仓库。请到 [GitHub Releases](https
 Windows 10 / 11 同样使用这套安装包即可。本软件需要 **Windows 7 SP1** 或更高版本（未打 SP1 的 Win7 仍可能无法运行）。
 
 若启动失败：先确认系统是 32 还是 64 位并换用对应的包；再改用绿色版解压到短路径（如 `C:\GuoyiTeacher`）后双击 `start_teacher.cmd`。
+
+教师机 Windows 7 上若窗口一闪或弹出错误，请把安装目录下的 `start_teacher.log` 发给开发者（可用记事本打开）。默认目录：
+
+`C:\Users\用户名\AppData\Local\GuoyiClassroom\Teacher`
+
+学生机日志为同级 `Student` 目录下的 `start_student.log`。已经在 Windows 10 / 11 上正常使用 1.2.1 学生端的电脑不必立刻重装；Windows 7 学生机请使用 1.2.2 或更新包。
+
+1.2.2 起 Windows 安装包改用 FastAPI 0.99 + Pydantic v1 纯 Python 轮子，**不再包含 `pydantic-core`**。1.2.1 教师机在 Win7 上会因 `_pydantic_core` 加载失败（「找不到指定的程序」）而无法启动。
 
 ---
 
