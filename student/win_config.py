@@ -9,7 +9,7 @@ from ctypes import Structure, byref, sizeof
 if sys.platform != "win32":
     raise ImportError("win_config 仅在 Windows 上使用")
 
-from ctypes import wintypes
+from shared.win_types import wintypes
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
@@ -20,6 +20,21 @@ WNDPROCTYPE = ctypes.WINFUNCTYPE(
     ctypes.c_longlong if IS_64 else ctypes.c_long,
     wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
 )
+
+class WNDCLASSW(Structure):
+    _fields_ = [
+        ("style", wintypes.UINT),
+        ("lpfnWndProc", WNDPROCTYPE),
+        ("cbClsExtra", ctypes.c_int),
+        ("cbWndExtra", ctypes.c_int),
+        ("hInstance", wintypes.HINSTANCE),
+        ("hIcon", wintypes.HICON),
+        ("hCursor", wintypes.HCURSOR),
+        ("hbrBackground", wintypes.HBRUSH),
+        ("lpszMenuName", wintypes.LPCWSTR),
+        ("lpszClassName", wintypes.LPCWSTR),
+    ]
+
 
 WM_DESTROY = 0x0002
 WM_CLOSE = 0x0010
@@ -87,20 +102,6 @@ def _run_dialog(server, port, name, code):
     proc = WNDPROCTYPE(_make_proc())
     # keep reference
     _run_dialog._proc = proc  # type: ignore
-
-    class WNDCLASSW(Structure):
-        _fields_ = [
-            ("style", wintypes.UINT),
-            ("lpfnWndProc", WNDPROCTYPE),
-            ("cbClsExtra", ctypes.c_int),
-            ("cbWndExtra", ctypes.c_int),
-            ("hInstance", wintypes.HINSTANCE),
-            ("hIcon", wintypes.HICON),
-            ("hCursor", wintypes.HCURSOR),
-            ("hbrBackground", wintypes.HBRUSH),
-            ("lpszMenuName", wintypes.LPCWSTR),
-            ("lpszClassName", wintypes.LPCWSTR),
-        ]
 
     cls = WNDCLASSW()
     cls.lpfnWndProc = proc

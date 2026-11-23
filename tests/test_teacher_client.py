@@ -149,7 +149,7 @@ def main():
     try:
         info = wait_http()
         chk.check("公开信息学校名", info.get("school") == "乐昌国艺书院")
-        chk.check("公开信息版本", info.get("version") == "1.2.4", str(info.get("version")))
+        chk.check("公开信息版本", info.get("version") == "1.2.5", str(info.get("version")))
         chk.check("公开信息开发者", info.get("developer") == "陈老师")
 
         client = TeacherClient(BASE, timeout=10)

@@ -10,7 +10,7 @@ if sys.platform != "win32":
     raise ImportError("win_wallpaper 仅在 Windows 上使用")
 
 import winreg
-from ctypes import wintypes
+from shared.win_types import wintypes
 
 user32 = ctypes.windll.user32
 

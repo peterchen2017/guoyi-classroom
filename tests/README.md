@@ -47,6 +47,11 @@ cd /workspace/classroom-lab
 
 另请运行 `tests/test_win7_deps.py`（`./start_verify.sh` 已包含）：确认 Windows 安装依赖不包含 `pydantic-core`，以及教师/学生启动器失败时会写出可发给开发者的日志。
 
+另请运行 `tests/test_win_types.py`（`./start_verify.sh` 已包含）：
+在 Linux 上用仿 CPython 3.8.10 的 `ctypes.wintypes`（没有 `HCURSOR`）验证兼容补丁；
+确认 `import teacher.win_console` / `student.win_config` / `student.win_ui` 不会因
+缺少 `HCURSOR` 而崩溃，且 `WNDCLASSW` 能定义。不启动真实 Win32 窗口。
+
 另请运行 `tests/test_teacher_client.py`（`./start_verify.sh` 已包含）：
 在 Linux 上启动教师机服务，用原生窗口使用的 API 客户端验证登录、上课、换码、公告、发文件、
 限制名单、广播与默认桌面等接口，以及状态文案映射。不启动 Win32 窗口。
