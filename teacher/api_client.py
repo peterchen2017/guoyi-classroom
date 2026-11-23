@@ -416,3 +416,16 @@ class TeacherClient(object):
             raw=True,
         )
         return body, status, ctype
+
+    def remote_start(self, device_id):
+        return self.request("POST", "/api/remote/start", json_body={"student_id": device_id})
+
+    def remote_stop(self, device_id=None):
+        return self.request("POST", "/api/remote/stop", json_body={"student_id": device_id or ""})
+
+    def remote_input(self, device_id, events):
+        return self.request(
+            "POST",
+            "/api/remote/input",
+            json_body={"student_id": device_id, "events": events or []},
+        )

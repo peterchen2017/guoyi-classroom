@@ -96,7 +96,9 @@ def test_state_helpers(chk):
     chk.check("缩小屏幕勾选", caps["shrink"] is True)
     chk.check("学生汇总含待批准", "待批准 1" in state_view.student_summary(state) and "在线 2" in state_view.student_summary(state))
     wall = state_view.wall_students(state)
-    chk.check("屏幕墙只含已批准在线且有缩略图的学生", [s["device_id"] for s in wall] == ["d2"])
+    chk.check("上课后屏幕墙含已批准在线学生（不必等缩略图）", [s["device_id"] for s in wall] == ["d2"])
+    no_thumb = {"class_active": True, "students": [dict(locked, device_id="d2")]}
+    chk.check("没有 thumb_at 也上墙", [s["device_id"] for s in state_view.wall_students(no_thumb)] == ["d2"])
     idle = {"class_active": False, "students": state["students"]}
     chk.check("未上课不显示屏幕墙", state_view.wall_students(idle) == [])
     banner = state_view.format_lan_banner(["192.168.1.10"], 8765)
@@ -149,7 +151,7 @@ def main():
     try:
         info = wait_http()
         chk.check("公开信息学校名", info.get("school") == "乐昌国艺书院")
-        chk.check("公开信息版本", info.get("version") == "1.2.6", str(info.get("version")))
+        chk.check("公开信息版本", info.get("version") == "1.2.7", str(info.get("version")))
         chk.check("公开信息开发者", info.get("developer") == "陈老师")
 
         client = TeacherClient(BASE, timeout=10)
@@ -181,9 +183,22 @@ def main():
         except TeacherApiError as exc:
             chk.check("未上课时广播被拒绝", exc.status == 400, str(exc))
 
+        try:
+            client.remote_start("ghost")
+            chk.check("未上课时远程控制应失败", False)
+        except TeacherApiError as exc:
+            chk.check("未上课时远程控制被拒绝", exc.status == 400, str(exc))
+
         st = client.class_start()
         chk.check("开始上课", st.get("class_active") is True)
         chk.check("上课后默认开启网页限制", (st.get("web_restrict") or {}).get("enabled") is True)
+        chk.check("上课后状态含 remote_device_id 字段", "remote_device_id" in st)
+
+        try:
+            client.remote_start("ghost")
+            chk.check("学生不在线时远程控制应失败", False)
+        except TeacherApiError as exc:
+            chk.check("学生不在线时远程控制被拒绝", exc.status == 400, str(exc))
 
         client.announce("请看黑板", "announce")
         client.announce("计算 1+1", "question")
@@ -229,6 +244,7 @@ def main():
 
         ended = client.class_end()
         chk.check("下课", ended.get("class_active") is False)
+        chk.check("下课清除远程控制目标", ended.get("remote_device_id") in (None, ""))
 
         client.change_password("ChangeMe@2026", "NewPass@2026")
         other = TeacherClient(BASE, timeout=10)

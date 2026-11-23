@@ -20,12 +20,13 @@ def status_label(student):
 def student_line(student):
     student = student or {}
     name = student.get("name") or "学生"
+    mark = "● " if student.get("online") else "○ "
     bits = [status_label(student)]
     if student.get("hostname"):
         bits.append(student.get("hostname"))
     if student.get("ip"):
         bits.append(student.get("ip"))
-    return "%s  %s" % (name, " · ".join(bits))
+    return "%s%s  %s" % (mark, name, " · ".join(bits))
 
 
 def student_summary(state):
@@ -63,17 +64,19 @@ def toolbar_captions(state):
         "restrict": "关闭网页/下载限制" if wr.get("enabled") else "限制网页游戏和下载",
         "desktop": "更换默认桌面（已锁定）" if desk.get("locked") else "设置默认桌面",
         "desktop_unlock_enabled": bool(desk.get("locked")),
+        "remote": "停止控制" if state.get("remote_device_id") else "远程控制",
         "shrink": bool(state.get("broadcast_shrink")),
     }
 
 
 def wall_students(state):
+    """上课后：已批准且在线的学生都上墙，不必等第一帧 thumb_at。"""
     state = state or {}
     if not state.get("class_active"):
         return []
     rows = []
     for s in state.get("students") or []:
-        if s.get("approved") and s.get("online") and s.get("thumb_at"):
+        if s.get("approved") and s.get("online"):
             rows.append(s)
     return rows
 

@@ -107,7 +107,7 @@ def main():
     import launch_teacher
     import launch_student
 
-    c.check("应用版本为 1.2.6", VERSION == "1.2.6", VERSION)
+    c.check("应用版本为 1.2.7", VERSION == "1.2.7", VERSION)
     c.check("server.config.VERSION 与 shared.version 一致", server_config.VERSION == VERSION)
 
     # 启动日志写明 VERSION，便于从日志判断是否跑到新版
@@ -136,7 +136,7 @@ def main():
     c.check("存在升级清理脚本 upgrade-cleanup.nsh", (ROOT / "packaging" / "upgrade-cleanup.nsh").is_file())
     for role, nsi in (("教师机", teacher_nsi), ("学生机", student_nsi)):
         c.check("%s NSIS 安装前调用升级清理" % role, "!insertmacro GuoyiCleanupOldProgramFiles" in nsi and nsi.find("!insertmacro GuoyiCleanupOldProgramFiles") < nsi.find("File /r"))
-        c.check("%s NSIS 版本为 1.2.6" % role, '!define APP_VERSION "1.2.6"' in nsi and "${APP_VERSION}" in nsi)
+        c.check("%s NSIS 版本为 1.2.7" % role, '!define APP_VERSION "1.2.7"' in nsi and "${APP_VERSION}" in nsi)
     c.check("升级清理会删除旧 launch 脚本", "launch_teacher.py" in cleanup and "launch_student.py" in cleanup and "start_teacher.cmd" in cleanup)
     c.check("升级清理会移除整棵内置 Python/site-packages", 'RMDir /r "$INSTDIR\\python"' in cleanup)
     c.check("升级清理说明保留日志和 data", "data" in cleanup and "*.log" in cleanup)
@@ -155,10 +155,13 @@ def main():
     c.check("教师机启动后打开原生主窗口", "run_main_window" in launch_src and "teacher.win_console" in launch_src)
     c.check("默认不再自动打开浏览器", "_open_when_ready" not in launch_src)
     c.check("使用说明以软件主窗口为主", "教师主窗口" in guide and "不必预先安装 Chrome" in guide)
-    c.check("使用说明版本写 1.2.6", "1.2.6" in guide)
+    c.check("使用说明版本写 1.2.7", "1.2.7" in guide)
     c.check("使用说明写明 HCURSOR 兼容修复", "HCURSOR" in guide and "教师窗口无法打开" in guide)
     c.check("使用说明写明记住密码与 DPAPI", "记住密码" in guide and "DPAPI" in guide)
     c.check("使用说明写明可重置为默认密码", "重置为默认密码" in guide)
+    c.check("使用说明写明先开课再看屏", "开始上课" in guide and "学生机才会传来画面" in guide)
+    c.check("使用说明写明远程控制用法", "远程控制" in guide and "老师正在控制本机" in guide and "1.2.7" in guide)
+    c.check("使用说明写明两端都要升级", "教师机和学生机都要" in guide or "教师机和学生机都需要" in guide)
     cred = ROOT / "teacher" / "credentials.py"
     c.check("存在 teacher/credentials.py", cred.is_file())
     cred_src = cred.read_text(encoding="utf-8") if cred.is_file() else ""
