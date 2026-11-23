@@ -10,7 +10,7 @@ from pathlib import Path
 if sys.platform != "win32":
     raise ImportError("win_proxy 仅在 Windows 上使用")
 
-from ctypes import wintypes
+from shared.win_types import wintypes
 
 IS_64 = sizeof(ctypes.c_void_p) == 8
 

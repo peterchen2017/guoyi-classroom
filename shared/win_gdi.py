@@ -8,7 +8,7 @@ from ctypes import POINTER, Structure, byref, sizeof
 if sys.platform != "win32":
     raise ImportError("win_gdi 仅在 Windows 上使用")
 
-from ctypes import wintypes
+from shared.win_types import wintypes
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32

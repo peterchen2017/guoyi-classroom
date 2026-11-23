@@ -17,7 +17,7 @@ from ctypes import Structure, byref, c_void_p, sizeof
 if sys.platform != "win32":
     raise ImportError("win_console 仅在 Windows 上使用")
 
-from ctypes import wintypes
+from shared.win_types import wintypes
 
 from shared.version import TEACHER_WINDOW_TITLE, VERSION
 from teacher.api_client import AuthExpired, TeacherApiError, TeacherClient
