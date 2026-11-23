@@ -1,13 +1,16 @@
-验证时间（Asia/Shanghai）：2026-11-23 17:50
+验证时间（Asia/Shanghai）：2026-11-23 18:32
 
 ./start_verify.sh
 
-tests/test_win7_deps.py：通过 45，失败 0
+tests/test_win7_deps.py：通过 48，失败 0
 tests/test_win_types.py：通过 35，失败 0
 tests/test_credentials.py：通过 33，失败 0
-tests/test_teacher_client.py：通过 48，失败 0
+tests/test_teacher_client.py：通过 53，失败 0
+tests/test_wall_and_remote.py：通过 53，失败 0
 tests/test_desktop.py：通过 14，失败 0
 tests/test_web_filter.py：通过 20，失败 0
 tests/test_flow.py：通过 29，失败 0
 
-本轮为 1.2.6：修正登录失败提示（账号或密码不正确，不再误报登录已过期）；登录窗口支持记住密码（本机 DPAPI）；可重置为默认密码。存储层与 API/客户端测试通过，原有功能回归全部通过。本机为 Linux，未做 Windows 7 真机测试，也无法在此环境实际拉起 Win32 GUI。
+合计检查项：通过 285，失败 0。不允许失败，本轮全部通过。
+
+本轮为 1.2.7：修复屏幕墙（未开课大字提示；开课后已批准在线学生立即出卡片，先显示「等待画面…」；缩略图缓存与重试；取屏失败写明确文字）；教师窗口分组可换行工具栏（开始上课更显眼，不再把按钮丢在 (0,0)）；上课时可选远程控制（查看屏幕后开启，学生机醒目横幅「老师正在控制本机」，下课/关窗/停止控制立即停止；一次一台；旧 1.2.6 学生端忽略未知消息）。登录逻辑保持 1.2.6（DPAPI、错误提示、两次确认重置默认密码）。存储层、协议与 API/客户端测试通过，原有功能回归全部通过。本机为 Linux，未做 Windows 7 真机测试，也无法在此环境实际拉起 Win32 GUI 或注入真实鼠标键盘（远程注入仅用模拟/单元测试覆盖）。

@@ -97,6 +97,15 @@ class DesktopLockBody(BaseModel):
     lock: Optional[bool] = True
 
 
+class RemoteStartBody(BaseModel):
+    student_id: str
+
+
+class RemoteInputBody(BaseModel):
+    student_id: str
+    events: Optional[List[Any]] = None
+
+
 # ---------- 鉴权 ----------
 
 def _bearer(authorization=None):
@@ -201,6 +210,41 @@ def approved_online_ids():
     ]
 
 
+
+async def stop_remote(device_id=None, push=True):
+    """下课、移出、断线或老师主动停止时结束远程控制。"""
+    from shared.remote_protocol import stop_message
+    prev = store.remote_device_id
+    if not prev:
+        return None
+    if device_id is not None and prev != device_id:
+        return None
+    store.remote_device_id = None
+    await send_student(prev, stop_message())
+    if push:
+        await push_state()
+    return prev
+
+
+async def start_remote(device_id):
+    from shared.remote_protocol import start_message
+    if not store.class_active:
+        raise HTTPException(status_code=400, detail="请先开始上课")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="请先选择一名学生")
+    student = store.students.get(device_id)
+    if not student or not student.approved or not student.online:
+        raise HTTPException(status_code=400, detail="只能控制已加入且在线的学生机")
+    prev = store.remote_device_id
+    if prev and prev != device_id:
+        store.remote_device_id = None
+        from shared.remote_protocol import stop_message
+        await send_student(prev, stop_message())
+    store.remote_device_id = device_id
+    sent = await send_student(device_id, start_message())
+    await push_state()
+    return {"ok": True, "remote_device_id": device_id, "sent": sent, "previous": prev}
+
 def target_ids(student_ids):
     if student_ids:
         return [sid for sid in student_ids if sid in store.students]
@@ -264,8 +308,12 @@ async def api_class_start(_token=Depends(require_teacher)):
 async def api_class_end(_token=Depends(require_teacher)):
     ids = approved_online_ids()
     off = restrict_payload()
+    prev_remote = store.remote_device_id
     store.end_class_cleanup()
     off["enabled"] = False
+    if prev_remote:
+        from shared.remote_protocol import stop_message
+        await send_student(prev_remote, stop_message())
     await send_students(ids, {"type": "class_end"})
     await send_students(ids, off)
     await push_state()
@@ -311,6 +359,8 @@ async def api_revoke(device_id: str, _token=Depends(require_teacher)):
     student.focus_requested = False
     store.thumbs.pop(device_id, None)
     store.focus_frames.pop(device_id, None)
+    if store.remote_device_id == device_id:
+        await stop_remote(device_id, push=False)
     store.save()
     await send_student(device_id, {"type": "revoked"})
     await push_state()
@@ -615,6 +665,33 @@ async def api_broadcast_image(_token=Depends(require_teacher)):
 
 # ---------- WebSocket ----------
 
+
+@app.post("/api/remote/start")
+async def api_remote_start(body: RemoteStartBody, _token=Depends(require_teacher)):
+    return await start_remote((body.student_id or "").strip())
+
+
+@app.post("/api/remote/stop")
+async def api_remote_stop(body: RemoteStartBody = None, _token=Depends(require_teacher)):
+    sid = (body.student_id or "").strip() if body else ""
+    prev = await stop_remote(sid or None)
+    return {"ok": True, "stopped": prev, "remote_device_id": store.remote_device_id}
+
+
+@app.post("/api/remote/input")
+async def api_remote_input(body: RemoteInputBody, _token=Depends(require_teacher)):
+    from shared.remote_protocol import input_message, sanitize_events
+    if not store.class_active:
+        raise HTTPException(status_code=400, detail="请先开始上课")
+    sid = (body.student_id or "").strip()
+    if not sid or store.remote_device_id != sid:
+        raise HTTPException(status_code=400, detail="当前没有控制这台学生机")
+    events = sanitize_events(body.events or [])
+    if events:
+        await send_student(sid, input_message(events))
+    return {"ok": True, "count": len(events)}
+
+
 @app.websocket("/ws/teacher")
 async def ws_teacher(ws: WebSocket, token: str = Query("")):
     if not store.check_session(token):
@@ -709,6 +786,7 @@ async def ws_student(ws: WebSocket):
                     "copyright": config.COPYRIGHT,
                     "web_restrict": restrict_payload(),
                     "desktop": store.desktop_public(),
+                    "remote_active": bool(store.remote_device_id == device_id and store.class_active),
                 },
                 ensure_ascii=False,
             )
@@ -728,6 +806,9 @@ async def ws_student(ws: WebSocket):
         if student.approved:
             token = store.device_tokens.get(device_id)
             await ws.send_text(json.dumps(store.desktop_message(token), ensure_ascii=False))
+            if store.remote_device_id == device_id and store.class_active:
+                from shared.remote_protocol import start_message
+                await ws.send_text(json.dumps(start_message(), ensure_ascii=False))
 
         while True:
             raw = await ws.receive_text()
@@ -755,6 +836,8 @@ async def ws_student(ws: WebSocket):
             if student:
                 student.online = False
                 student.focus_requested = False
+            if store.remote_device_id == device_id:
+                store.remote_device_id = None
             try:
                 await push_state()
             except Exception:

@@ -27,6 +27,9 @@ from teacher.credentials import (
     reset_teacher_password_to_default,
 )
 from teacher import state_view
+from teacher.toolbar_layout import layout_toolbar
+from teacher.wall_logic import ThumbCache, build_wall_entries, wall_empty_message
+from shared.jpeg_decode import decode_jpeg_bgrx
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
@@ -75,6 +78,17 @@ WM_VSCROLL = 0x0115
 WM_MOUSEWHEEL = 0x020A
 WM_LBUTTONUP = 0x0202
 WM_LBUTTONDBLCLK = 0x0203
+WM_LBUTTONDOWN = 0x0201
+WM_MOUSEMOVE = 0x0200
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP = 0x0205
+WM_MBUTTONDOWN = 0x0207
+WM_MBUTTONUP = 0x0208
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_SYSKEYDOWN = 0x0104
+WM_SYSKEYUP = 0x0105
+WM_DRAWITEM = 0x002B
 WM_APP = 0x8000
 WM_APP_UI = WM_APP + 1
 
@@ -107,6 +121,7 @@ BS_PUSHBUTTON = 0
 BS_DEFPUSHBUTTON = 1
 BS_AUTOCHECKBOX = 3
 BS_LEFT = 0x00000100
+BS_OWNERDRAW = 0x0000000B
 BM_GETCHECK = 0x00F0
 BM_SETCHECK = 0x00F1
 BST_CHECKED = 1
@@ -181,6 +196,7 @@ ID_BROADCAST_IMAGE = 1013
 ID_DESKTOP = 1014
 ID_DESKTOP_UNLOCK = 1015
 ID_OPEN_BROWSER = 1016
+ID_REMOTE = 1017
 ID_STUDENT_LIST = 1100
 ID_APPROVE = 1201
 ID_DENY = 1202
@@ -196,6 +212,7 @@ ID_FOOTER = 1305
 ID_SUMMARY = 1306
 ID_FOCUS_LOCK = 1401
 ID_FOCUS_CLOSE = 1402
+ID_FOCUS_REMOTE = 1403
 IDD_USER = 201
 IDD_PASS = 202
 IDD_OLD = 203
@@ -221,14 +238,36 @@ FILE_FILTER = (
 IMAGE_FILTER = "图片文件\0*.jpg;*.jpeg;*.png;*.bmp;*.gif\0所有文件\0*.*\0\0"
 WALLPAPER_FILTER = "壁纸图片\0*.jpg;*.jpeg;*.png;*.bmp\0所有文件\0*.*\0\0"
 
-# 颜色（COLORREF = 0x00BBGGRR）
-COL_HEADER = 0x00351A12
+# 颜色（COLORREF = 0x00BBGGRR）课堂软件风格：深蓝顶栏、白底内容，不仿冒商业商标界面。
+COL_HEADER = 0x00643314
 COL_HEADER_TEXT = 0x00FFFFFF
-COL_TOOL = 0x00F5EEE8
-COL_WALL = 0x00F8F6F4
+COL_HEADER_MUTED = 0x00E8DCC8
+COL_TOOL = 0x00F3EEE6
+COL_TOOL_LINE = 0x00D8D0C6
+COL_WALL = 0x00F7F7F7
 COL_TILE_CAP = 0x00333333
 COL_OFFLINE = 0x00666666
-COL_FOOTER = 0x00EEE8E0
+COL_FOOTER = 0x00ECE8E4
+COL_ONLINE = 0x00248F3A
+COL_LOCKED = 0x002D4EC8
+COL_START = 0x00219A3A
+COL_START_DOWN = 0x001A7A2E
+COL_END = 0x002D4EC8
+COL_END_DOWN = 0x00203AA0
+
+class DRAWITEMSTRUCT(Structure):
+    _fields_ = [
+        ("CtlType", wintypes.UINT),
+        ("CtlID", wintypes.UINT),
+        ("itemID", wintypes.UINT),
+        ("itemAction", wintypes.UINT),
+        ("itemState", wintypes.UINT),
+        ("hwndItem", wintypes.HWND),
+        ("hDC", wintypes.HDC),
+        ("rcItem", wintypes.RECT),
+        ("itemData", ctypes.c_void_p),
+    ]
+
 
 class WNDCLASSW(Structure):
     _fields_ = [
@@ -440,25 +479,19 @@ def add_ctl(parent, cls, text, style, x, y, w, h, cid=0, ex=0, font=None):
 
 
 def jpeg_to_hbitmap(image_bytes, dest_w, dest_h):
-    """用已打包的 Pillow 解码缩略图，生成 HBITMAP。失败返回 None。"""
+    """解码 JPEG 生成 HBITMAP。Pillow 失败时由 decode_jpeg_bgrx 回退 GDI+。"""
     if not image_bytes:
         return None
-    try:
-        from PIL import Image
-        import io
-        im = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        dest_w = max(1, int(dest_w))
-        dest_h = max(1, int(dest_h))
-        if im.size != (dest_w, dest_h):
-            resample = getattr(Image, "BILINEAR", 2)
-            im = im.resize((dest_w, dest_h), resample)
-        raw = im.tobytes("raw", "BGRX")
-    except Exception:
+    decoded = decode_jpeg_bgrx(image_bytes)
+    if decoded is None:
         return None
+    src_w, src_h, raw = decoded
+    dest_w = max(1, int(dest_w))
+    dest_h = max(1, int(dest_h))
     bmi = BITMAPINFO()
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER)
-    bmi.bmiHeader.biWidth = dest_w
-    bmi.bmiHeader.biHeight = -dest_h
+    bmi.bmiHeader.biWidth = src_w
+    bmi.bmiHeader.biHeight = -src_h
     bmi.bmiHeader.biPlanes = 1
     bmi.bmiHeader.biBitCount = 32
     bmi.bmiHeader.biCompression = 0
@@ -467,28 +500,41 @@ def jpeg_to_hbitmap(image_bytes, dest_w, dest_h):
     if not hbmp:
         user32.ReleaseDC(None, hdc)
         return None
-    gdi32.SetDIBits(hdc, hbmp, 0, dest_h, raw, byref(bmi), 0)
+    if (src_w, src_h) == (dest_w, dest_h):
+        gdi32.SetDIBits(hdc, hbmp, 0, dest_h, raw, byref(bmi), 0)
+        user32.ReleaseDC(None, hdc)
+        return hbmp
+    mem = gdi32.CreateCompatibleDC(hdc)
+    old = gdi32.SelectObject(mem, hbmp)
+    try:
+        gdi32.SetStretchBltMode(mem, 3)  # COLORONCOLOR
+    except Exception:
+        pass
+    gdi32.StretchDIBits(
+        mem, 0, 0, dest_w, dest_h, 0, 0, src_w, src_h, raw, byref(bmi), 0, SRCCOPY,
+    )
+    gdi32.SelectObject(mem, old)
+    gdi32.DeleteDC(mem)
     user32.ReleaseDC(None, hdc)
     return hbmp
 
 
 def jpeg_to_hbitmap_fit(image_bytes, hwnd, margin=20, bottom=50):
-    if not image_bytes or not hwnd:
-        return jpeg_to_hbitmap(image_bytes, 640, 360) if image_bytes else None
-    try:
-        from PIL import Image
-        import io
-        im = Image.open(io.BytesIO(image_bytes))
-        cw, ch = _client_size(hwnd)
-        max_w = max(160, cw - margin * 2)
-        max_h = max(120, ch - bottom - margin)
-        w, h = im.size
-        if w <= 0 or h <= 0:
-            return None
-        scale = min(float(max_w) / w, float(max_h) / h, 1.0)
-        return jpeg_to_hbitmap(image_bytes, max(1, int(w * scale)), max(1, int(h * scale)))
-    except Exception:
+    if not image_bytes:
+        return None
+    decoded = decode_jpeg_bgrx(image_bytes)
+    if decoded is None:
         return jpeg_to_hbitmap(image_bytes, 640, 360)
+    w, h, _raw = decoded
+    if w <= 0 or h <= 0:
+        return None
+    if not hwnd:
+        return jpeg_to_hbitmap(image_bytes, min(w, 640), max(1, int(h * min(640.0 / w, 1.0))))
+    cw, ch = _client_size(hwnd)
+    max_w = max(160, cw - margin * 2)
+    max_h = max(120, ch - bottom - margin)
+    scale = min(float(max_w) / w, float(max_h) / h, 1.0)
+    return jpeg_to_hbitmap(image_bytes, max(1, int(w * scale)), max(1, int(h * scale)))
 
 
 def delete_bitmap(hbmp):
@@ -602,44 +648,48 @@ def ask_login(parent=None, username="teacher", password="", remember=False, erro
     def build(state):
         hwnd = state["hwnd"]
         font = state["font"]
-        add_ctl(hwnd, "STATIC", "乐昌国艺书院  机房课堂管理  v%s" % VERSION,
-                WS_CHILD | WS_VISIBLE, 24, 16, 400, 24, font=font)
-        add_ctl(hwnd, "STATIC", "教师账号", WS_CHILD | WS_VISIBLE, 24, 52, 80, 22, font=font)
+        add_ctl(hwnd, "STATIC", "乐昌国艺书院  机房课堂管理  教师登录  v%s" % VERSION,
+                WS_CHILD | WS_VISIBLE, 24, 12, 430, 24, ID_HEADER_BRAND, font=font)
+        add_ctl(hwnd, "STATIC", "课堂上课请使用本窗口，不必打开浏览器。",
+                WS_CHILD | WS_VISIBLE, 24, 36, 430, 20, font=font)
+        add_ctl(hwnd, "STATIC", "教师账号", WS_CHILD | WS_VISIBLE, 24, 64, 80, 22, font=font)
         ed_user = add_ctl(
             hwnd, "EDIT", username or "",
             WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | ES_LEFT,
-            110, 50, 270, 24, IDD_USER, WS_EX_CLIENTEDGE, font,
+            110, 62, 270, 24, IDD_USER, WS_EX_CLIENTEDGE, font,
         )
-        add_ctl(hwnd, "STATIC", "密码", WS_CHILD | WS_VISIBLE, 24, 92, 80, 22, font=font)
+        add_ctl(hwnd, "STATIC", "密码", WS_CHILD | WS_VISIBLE, 24, 104, 80, 22, font=font)
         ed_pass = add_ctl(
             hwnd, "EDIT", password or "",
             WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD,
-            110, 90, 270, 24, IDD_PASS, WS_EX_CLIENTEDGE, font,
+            110, 102, 270, 24, IDD_PASS, WS_EX_CLIENTEDGE, font,
         )
         chk = add_ctl(
             hwnd, "BUTTON", "记住密码（下次自动填写，仍需点登录）",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_LEFT,
-            110, 124, 300, 24, IDD_REMEMBER, font=font,
+            110, 136, 300, 24, IDD_REMEMBER, font=font,
         )
         user32.SendMessageW(chk, BM_SETCHECK, BST_CHECKED if remember else BST_UNCHECKED, 0)
         add_ctl(
             hwnd, "STATIC",
             "默认账号 teacher。若以前改过密码，升级后仍用改过的那个。",
-            WS_CHILD | WS_VISIBLE, 24, 156, 400, 20, font=font,
+            WS_CHILD | WS_VISIBLE, 24, 168, 400, 20, font=font,
         )
         add_ctl(
             hwnd, "STATIC",
             "课堂数据目录会保留，不会因升级安装而丢失。",
-            WS_CHILD | WS_VISIBLE, 24, 176, 400, 20, font=font,
+            WS_CHILD | WS_VISIBLE, 24, 188, 400, 20, font=font,
         )
         if error:
-            add_ctl(hwnd, "STATIC", error, WS_CHILD | WS_VISIBLE, 24, 204, 400, 36, font=font)
+            add_ctl(hwnd, "STATIC", error, WS_CHILD | WS_VISIBLE, 24, 216, 400, 36, font=font)
         add_ctl(hwnd, "BUTTON", "登录", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
-                24, 250, 90, 30, IDOK, font=font)
+                24, 262, 90, 30, IDOK, font=font)
         add_ctl(hwnd, "BUTTON", "退出", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-                124, 250, 90, 30, IDCANCEL, font=font)
+                124, 262, 90, 30, IDCANCEL, font=font)
         add_ctl(hwnd, "BUTTON", "重置为默认密码", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-                230, 250, 150, 30, IDD_RESET_PASSWORD, font=font)
+                230, 262, 150, 30, IDD_RESET_PASSWORD, font=font)
+        add_ctl(hwnd, "STATIC", "版权所有 © 乐昌国艺书院    开发者：陈老师",
+                WS_CHILD | WS_VISIBLE, 24, 300, 430, 20, ID_FOOTER, font=font)
         state["edits"]["user"] = ed_user
         state["edits"]["pass"] = ed_pass
         state["edits"]["remember"] = chk
@@ -698,7 +748,7 @@ def ask_login(parent=None, username="teacher", password="", remember=False, erro
         state["on_cancel"] = on_cancel
         state["on_command"] = on_command
 
-    return _run_simple_dialog("GuoyiTeacherLogin", "教师登录 - 乐昌国艺书院", 460, 340, build, parent)
+    return _run_simple_dialog("GuoyiTeacherLogin", "教师登录 - 乐昌国艺书院  %s" % VERSION, 480, 370, build, parent)
 
 
 def ask_text(parent, title, label):
@@ -891,7 +941,11 @@ class ScreenWall(object):
         self.tile_h = 148
         self.gap = 10
         self.img_h = 120
+        self.empty_message = wall_empty_message({})
         self._bg = gdi32.CreateSolidBrush(COL_WALL)
+        self._tile_bg = gdi32.GetStockObject(WHITE_BRUSH)
+        self._online_brush = gdi32.CreateSolidBrush(COL_ONLINE)
+        _KEEP.append(self._online_brush)
         _KEEP.append(self._bg)
         self._proc = WNDPROCTYPE(self._wndproc)
         register_class(self.CLASS_NAME, self._proc, self._bg)
@@ -911,7 +965,9 @@ class ScreenWall(object):
         self.clear_bitmaps()
         self.tiles = []
 
-    def set_tiles(self, entries):
+    def set_tiles(self, entries, empty_message=None):
+        if empty_message is not None:
+            self.empty_message = empty_message
         old = {t["id"]: t for t in self.tiles}
         new_tiles = []
         for item in entries:
@@ -921,7 +977,12 @@ class ScreenWall(object):
                 "id": sid,
                 "name": item.get("name") or "学生",
                 "locked": bool(item.get("locked")),
+                "online": bool(item.get("online", True)),
                 "at": item.get("at"),
+                "caption": item.get("caption") or "",
+                "status_text": item.get("status_text") or "",
+                "error": item.get("error"),
+                "waiting": bool(item.get("waiting")),
                 "hbmp": None,
             }
             if prev and prev.get("at") == tile["at"] and prev.get("hbmp"):
@@ -929,6 +990,7 @@ class ScreenWall(object):
                 prev["hbmp"] = None
             elif item.get("image_bytes"):
                 tile["hbmp"] = jpeg_to_hbitmap(item["image_bytes"], self.tile_w, self.img_h)
+            # 格子尚未建好时，调用方已把 JPEG 放进 ThumbCache；下次 set_tiles 会带到这里。
             new_tiles.append(tile)
         self.clear_bitmaps()
         self.tiles = new_tiles
@@ -936,18 +998,29 @@ class ScreenWall(object):
         if self.hwnd:
             user32.InvalidateRect(self.hwnd, None, True)
 
-    def update_image(self, device_id, at, image_bytes):
+    def update_image(self, device_id, at, image_bytes, status_text=None, error=None):
         for t in self.tiles:
             if t["id"] == device_id:
-                if t.get("hbmp") and t.get("at") != at:
+                if t.get("hbmp") and t.get("at") != at and image_bytes:
                     delete_bitmap(t["hbmp"])
                     t["hbmp"] = None
                 t["at"] = at
                 if image_bytes:
                     t["hbmp"] = jpeg_to_hbitmap(image_bytes, self.tile_w, self.img_h)
+                    t["error"] = None
+                    t["status_text"] = ""
+                    t["waiting"] = False
+                else:
+                    if status_text is not None:
+                        t["status_text"] = status_text
+                    if error is not None:
+                        t["error"] = error
+                        t["status_text"] = error
+                        t["waiting"] = False
                 if self.hwnd:
                     user32.InvalidateRect(self.hwnd, None, True)
-                return
+                return False
+        return True  # 格子还没建，调用方应写入缓存
 
     def layout(self, x, y, w, h):
         if self.hwnd:
@@ -1052,12 +1125,21 @@ class ScreenWall(object):
         old_font = gdi32.SelectObject(hdc, self.font) if self.font else None
         gdi32.SetBkMode(hdc, TRANSPARENT)
         if not self.tiles:
-            msg_rect = wintypes.RECT(20, 40, max(cw - 20, 40), ch)
-            gdi32.SetTextColor(hdc, COL_OFFLINE)
+            msg_rect = wintypes.RECT(24, 36, max(cw - 24, 40), ch - 16)
+            gdi32.SetTextColor(hdc, COL_HEADER)
+            title = self.font
+            # 大字空状态，避免老师误以为「白格子坏了」
+            big = gdi32.CreateFontW(-22, 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 0, 0, "微软雅黑")
+            if big:
+                gdi32.SelectObject(hdc, big)
             user32.DrawTextW(
-                hdc, "开始上课后，已加入的学生机才会传来屏幕缩略图。",
-                -1, byref(msg_rect), DT_WORDBREAK,
+                hdc, self.empty_message or wall_empty_message({}),
+                -1, byref(msg_rect), DT_WORDBREAK | DT_CENTER,
             )
+            if big:
+                if title:
+                    gdi32.SelectObject(hdc, title)
+                gdi32.DeleteObject(big)
         else:
             cols, _rows, _cw, _ch, _content = self._cols_rows()
             memdc = gdi32.CreateCompatibleDC(hdc)
@@ -1077,11 +1159,16 @@ class ScreenWall(object):
                     gdi32.SelectObject(memdc, old)
                 else:
                     user32.FillRect(hdc, byref(img_rect), gdi32.GetStockObject(WHITE_BRUSH))
-                    gdi32.SetTextColor(hdc, COL_OFFLINE)
-                    user32.DrawTextW(hdc, "暂无画面", -1, byref(img_rect), DT_CENTER | DT_VCENTER | DT_SINGLELINE)
-                cap = wintypes.RECT(x + 4, y + self.img_h, x + self.tile_w - 4, y + self.tile_h)
-                cap_text = t["name"] + (" · 已锁屏" if t.get("locked") else "")
-                gdi32.SetTextColor(hdc, COL_TILE_CAP)
+                    gdi32.SetTextColor(hdc, COL_LOCKED if t.get("error") else COL_OFFLINE)
+                    tip = t.get("status_text") or t.get("error") or "等待画面…"
+                    user32.DrawTextW(hdc, tip, -1, byref(img_rect), DT_CENTER | DT_VCENTER | DT_WORDBREAK)
+                cap = wintypes.RECT(x + 18, y + self.img_h, x + self.tile_w - 4, y + self.tile_h)
+                cap_text = t.get("caption") or (t["name"] + (" · 已锁屏" if t.get("locked") else ""))
+                # 在线绿点
+                dot = wintypes.RECT(x + 5, y + self.img_h + 8, x + 13, y + self.img_h + 16)
+                if t.get("online", True):
+                    user32.FillRect(hdc, byref(dot), self._online_brush)
+                gdi32.SetTextColor(hdc, COL_LOCKED if t.get("locked") else COL_TILE_CAP)
                 user32.DrawTextW(
                     hdc, cap_text, -1, byref(cap),
                     DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
@@ -1095,16 +1182,21 @@ class ScreenWall(object):
 class FocusWindow(object):
     CLASS_NAME = "GuoyiTeacherFocus"
 
-    def __init__(self, parent, client, device_id, font, on_lock, on_close):
+    def __init__(self, parent, client, device_id, font, on_lock, on_close, on_remote=None, on_input=None):
         self.parent = parent
         self.client = client
         self.device_id = device_id
         self.font = font
         self.on_lock = on_lock
         self.on_close = on_close
+        self.on_remote = on_remote
+        self.on_input = on_input
         self.hwnd = None
         self.hbmp = None
         self.btn_lock = None
+        self.btn_remote = None
+        self.controlling = False
+        self._img_rect = (0, 0, 0, 0)
         self._bg = gdi32.CreateSolidBrush(COL_WALL)
         _KEEP.append(self._bg)
         self._proc = WNDPROCTYPE(self._wndproc)
@@ -1124,8 +1216,13 @@ class FocusWindow(object):
             WS_CHILD | WS_VISIBLE | WS_TABSTOP,
             20, 540, 100, 28, ID_FOCUS_LOCK, font=font,
         )
+        self.btn_remote = add_ctl(
+            self.hwnd, "BUTTON", "远程控制",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            130, 540, 110, 28, ID_FOCUS_REMOTE, font=font,
+        )
         add_ctl(self.hwnd, "BUTTON", "关闭", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                130, 540, 100, 28, ID_FOCUS_CLOSE, font=font)
+                250, 540, 100, 28, ID_FOCUS_CLOSE, font=font)
         user32.ShowWindow(self.hwnd, SW_SHOWNORMAL)
         self.layout()
 
@@ -1135,14 +1232,29 @@ class FocusWindow(object):
         cw, ch = _client_size(self.hwnd)
         if self.btn_lock:
             user32.MoveWindow(self.btn_lock, 20, ch - 42, 100, 28, True)
+        if self.btn_remote:
+            user32.MoveWindow(self.btn_remote, 130, ch - 42, 110, 28, True)
             close = user32.GetDlgItem(self.hwnd, ID_FOCUS_CLOSE)
             if close:
-                user32.MoveWindow(close, 130, ch - 42, 100, 28, True)
+                user32.MoveWindow(close, 250, ch - 42, 100, 28, True)
         user32.InvalidateRect(self.hwnd, None, True)
 
     def refresh_button(self, locked):
         if self.btn_lock:
             set_text(self.btn_lock, "解锁" if locked else "锁屏")
+
+    def set_controlling(self, on):
+        self.controlling = bool(on)
+        if self.btn_remote:
+            set_text(self.btn_remote, "停止控制" if self.controlling else "远程控制")
+        if self.hwnd:
+            name = "学生"
+            stu = state_view.find_student(self.client.state, self.device_id)
+            if stu:
+                name = stu.get("name") or name
+            suffix = "远程控制中" if self.controlling else "查看屏幕"
+            set_text(self.hwnd, "%s - %s" % (name, suffix))
+            user32.InvalidateRect(self.hwnd, None, True)
 
     def set_image(self, image_bytes):
         hbmp = jpeg_to_hbitmap_fit(image_bytes, self.hwnd)
@@ -1156,6 +1268,31 @@ class FocusWindow(object):
         if self.hwnd and user32.IsWindow(self.hwnd):
             user32.DestroyWindow(self.hwnd)
 
+    def _image_norm(self, x, y):
+        left, top, right, bottom = self._img_rect
+        w = right - left
+        h = bottom - top
+        if w <= 0 or h <= 0:
+            return None
+        nx = (float(x) - left) / w
+        ny = (float(y) - top) / h
+        if nx < 0:
+            nx = 0.0
+        if ny < 0:
+            ny = 0.0
+        if nx > 1:
+            nx = 1.0
+        if ny > 1:
+            ny = 1.0
+        return nx, ny
+
+    def _emit(self, events):
+        if self.controlling and self.on_input and events:
+            try:
+                self.on_input(self.device_id, events)
+            except Exception:
+                pass
+
     def _wndproc(self, hwnd, msg, wparam, lparam):
         if msg == WM_PAINT:
             self._paint(hwnd)
@@ -1168,8 +1305,52 @@ class FocusWindow(object):
             if cid == ID_FOCUS_LOCK and self.on_lock:
                 self.on_lock(self.device_id)
                 return 0
+            if cid == ID_FOCUS_REMOTE and self.on_remote:
+                self.on_remote(self.device_id, not self.controlling)
+                return 0
             if cid == ID_FOCUS_CLOSE:
                 user32.DestroyWindow(hwnd)
+                return 0
+        if self.controlling:
+            if msg in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL):
+                x, y = _loword(lparam), _hiword(lparam)
+                if msg == WM_MOUSEWHEEL:
+                    pt = wintypes.POINT(_loword(lparam), _hiword(lparam))
+                    user32.ScreenToClient(hwnd, byref(pt))
+                    x, y = pt.x, pt.y
+                pos = self._image_norm(x, y)
+                if pos is None and msg != WM_MOUSEWHEEL:
+                    return 0
+                nx, ny = pos if pos is not None else (0.5, 0.5)
+                ev = {"x": nx, "y": ny}
+                if msg == WM_MOUSEMOVE:
+                    ev["kind"] = "move"
+                elif msg == WM_LBUTTONDOWN:
+                    ev.update({"kind": "down", "btn": "left"})
+                    user32.SetCapture(hwnd)
+                elif msg == WM_LBUTTONUP:
+                    ev.update({"kind": "up", "btn": "left"})
+                    user32.ReleaseCapture()
+                elif msg == WM_RBUTTONDOWN:
+                    ev.update({"kind": "down", "btn": "right"})
+                    user32.SetCapture(hwnd)
+                elif msg == WM_RBUTTONUP:
+                    ev.update({"kind": "up", "btn": "right"})
+                    user32.ReleaseCapture()
+                elif msg == WM_MBUTTONDOWN:
+                    ev.update({"kind": "down", "btn": "middle"})
+                elif msg == WM_MBUTTONUP:
+                    ev.update({"kind": "up", "btn": "middle"})
+                elif msg == WM_MOUSEWHEEL:
+                    ev["kind"] = "wheel"
+                    ev["delta"] = int(_signed_hiword(wparam) / 120) * 120
+                self._emit([ev])
+                return 0
+            if msg in (WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP):
+                vk = int(wparam) & 0xFF
+                if 1 <= vk <= 254:
+                    kind = "keyup" if msg in (WM_KEYUP, WM_SYSKEYUP) else "keydown"
+                    self._emit([{"kind": kind, "vk": vk}])
                 return 0
         if msg == WM_CLOSE:
             user32.DestroyWindow(hwnd)
@@ -1201,13 +1382,26 @@ class FocusWindow(object):
             gdi32.BitBlt(hdc, x, y, bm.bmWidth, bm.bmHeight, memdc, 0, 0, SRCCOPY)
             gdi32.SelectObject(memdc, old)
             gdi32.DeleteDC(memdc)
+            self._img_rect = (x, y, x + bm.bmWidth, y + bm.bmHeight)
         else:
+            self._img_rect = (0, 0, 0, 0)
             gdi32.SetBkMode(hdc, TRANSPARENT)
             gdi32.SetTextColor(hdc, COL_OFFLINE)
             if self.font:
                 gdi32.SelectObject(hdc, self.font)
             user32.DrawTextW(hdc, "正在获取屏幕…", -1, byref(rect), DT_CENTER | DT_VCENTER | DT_SINGLELINE)
+        if self.controlling:
+            bar = wintypes.RECT(0, 0, cw, 28)
+            brush = gdi32.CreateSolidBrush(COL_END)
+            user32.FillRect(hdc, byref(bar), brush)
+            gdi32.DeleteObject(brush)
+            gdi32.SetBkMode(hdc, TRANSPARENT)
+            gdi32.SetTextColor(hdc, 0x00FFFFFF)
+            if self.font:
+                gdi32.SelectObject(hdc, self.font)
+            user32.DrawTextW(hdc, "正在远程控制该学生机 — 点「停止控制」或关闭本窗口即停止", -1, byref(bar), DT_CENTER | DT_VCENTER | DT_SINGLELINE)
         user32.EndPaint(hwnd, byref(ps))
+
 
 class TeacherMainWindow(object):
     CLASS_NAME = "GuoyiTeacherMain"
@@ -1235,7 +1429,18 @@ class TeacherMainWindow(object):
         self._bg_brush = gdi32.CreateSolidBrush(COL_WALL)
         for b in (self._header_brush, self._tool_brush, self._footer_brush, self._bg_brush):
             _KEEP.append(b)
-        self._thumb_at = {}
+        self.thumbs = ThumbCache()
+        self.remote_id = None
+        self._header_h = 62
+        self._toolbar_h = 70
+        self._footer_h = 28
+        self._remote_q = queue.Queue()
+        self._start_brush = gdi32.CreateSolidBrush(COL_START)
+        self._start_down_brush = gdi32.CreateSolidBrush(COL_START_DOWN)
+        self._end_brush = gdi32.CreateSolidBrush(COL_END)
+        self._end_down_brush = gdi32.CreateSolidBrush(COL_END_DOWN)
+        for b in (self._start_brush, self._start_down_brush, self._end_brush, self._end_down_brush):
+            _KEEP.append(b)
         self._proc = WNDPROCTYPE(self._wndproc)
         self._poller = None
 
@@ -1260,6 +1465,7 @@ class TeacherMainWindow(object):
         user32.ShowWindow(self.hwnd, SW_SHOWNORMAL)
         user32.UpdateWindow(self.hwnd)
         self._start_poller()
+        self._start_remote_pump()
         msg = wintypes.MSG()
         while user32.GetMessageW(byref(msg), None, 0, 0) > 0:
             if not user32.IsDialogMessageW(self.hwnd, byref(msg)):
@@ -1285,6 +1491,7 @@ class TeacherMainWindow(object):
                     state = self.client.get_state()
                     self.post("state", state)
                     self._fetch_thumbs(state)
+                    self._flush_remote_input()
                     if self.focus and self.focus.hwnd:
                         try:
                             body, status, _ctype = self.client.focus_frame(self.focus.device_id)
@@ -1305,20 +1512,75 @@ class TeacherMainWindow(object):
         self._poller.start()
 
     def _fetch_thumbs(self, state):
+        import time as _time
+        now = _time.time()
         for s in state_view.wall_students(state):
             sid = s.get("device_id")
             at = s.get("thumb_at")
             if not sid:
                 continue
-            if self._thumb_at.get(sid) == at:
+            if not self.thumbs.should_fetch(sid, at, now):
                 continue
             try:
                 body, status, _ctype = self.client.thumb(sid, at)
             except Exception:
+                self.thumbs.mark_error(sid, at, "取屏失败：无法连接教师机服务", now)
+                self.post("thumb", {"id": sid, "at": at, "bytes": None, "error": "取屏失败：无法连接教师机服务"})
                 continue
             if status == 200 and body:
-                self._thumb_at[sid] = at
+                self.thumbs.mark_fetched(sid, at, body)
                 self.post("thumb", {"id": sid, "at": at, "bytes": body})
+            elif status == 404:
+                self.thumbs.mark_waiting(sid, at, now)
+            else:
+                msg = "取屏失败：HTTP %s" % status
+                self.thumbs.mark_error(sid, at, msg, now)
+                self.post("thumb", {"id": sid, "at": at, "bytes": None, "error": msg})
+
+    def _flush_remote_input(self):
+        batches = {}
+        while True:
+            try:
+                sid, events = self._remote_q.get_nowait()
+            except queue.Empty:
+                break
+            batches.setdefault(sid, []).extend(events or [])
+        for sid, events in batches.items():
+            if not sid or sid != self.remote_id:
+                continue
+            try:
+                self.client.remote_input(sid, events)
+            except Exception:
+                pass
+
+
+    def _start_remote_pump(self):
+        def loop():
+            import time as _time
+            while not self._stop.is_set():
+                try:
+                    sid, events = self._remote_q.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                batch = list(events or [])
+                deadline = _time.time() + 0.03
+                while _time.time() < deadline:
+                    try:
+                        s2, ev2 = self._remote_q.get_nowait()
+                    except queue.Empty:
+                        break
+                    if s2 == sid:
+                        batch.extend(ev2 or [])
+                    else:
+                        self._remote_q.put((s2, ev2))
+                        break
+                if sid and sid == self.remote_id and batch:
+                    try:
+                        self.client.remote_input(sid, batch)
+                    except Exception:
+                        pass
+
+        threading.Thread(target=loop, name="teacher-remote", daemon=True).start()
 
     def call_api(self, fn, done_msg=None):
         if self._busy:
@@ -1344,12 +1606,14 @@ class TeacherMainWindow(object):
         hwnd = self.hwnd
         font = self.font
 
-        def btn(cid, text):
-            return add_ctl(hwnd, "BUTTON", text, WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                           0, 0, 80, 26, cid, font=font)
+        def btn(cid, text, owner_draw=False):
+            style = WS_CHILD | WS_VISIBLE | WS_TABSTOP
+            if owner_draw:
+                style |= BS_OWNERDRAW
+            return add_ctl(hwnd, "BUTTON", text, style, 8, 8, 80, 26, cid, font=font)
 
         self.ctrls["brand"] = add_ctl(
-            hwnd, "STATIC", "乐昌国艺书院  机房课堂管理",
+            hwnd, "STATIC", "乐昌国艺书院  机房课堂管理  %s" % VERSION,
             WS_CHILD | WS_VISIBLE, 0, 0, 200, 24, ID_HEADER_BRAND, font=self.font_title,
         )
         self.ctrls["status"] = add_ctl(
@@ -1364,10 +1628,11 @@ class TeacherMainWindow(object):
         )
         self.ctrls["password"] = btn(ID_PASSWORD, "改密码")
         self.ctrls["browser"] = btn(ID_OPEN_BROWSER, "在浏览器打开（手机用）")
-        self.ctrls["class"] = btn(ID_CLASS, "开始上课")
+        self.ctrls["class"] = btn(ID_CLASS, "开始上课", owner_draw=True)
         self.ctrls["refresh_code"] = btn(ID_REFRESH_CODE, "换码")
         self.ctrls["lock_all"] = btn(ID_LOCK_ALL, "锁屏全部")
         self.ctrls["unlock_all"] = btn(ID_UNLOCK_ALL, "解锁全部")
+        self.ctrls["remote"] = btn(ID_REMOTE, "远程控制")
         self.ctrls["announce"] = btn(ID_ANNOUNCE, "发公告")
         self.ctrls["question"] = btn(ID_QUESTION, "发题目")
         self.ctrls["file"] = btn(ID_FILE, "发文件")
@@ -1382,6 +1647,10 @@ class TeacherMainWindow(object):
         self.ctrls["broadcast_image"] = btn(ID_BROADCAST_IMAGE, "广播图片")
         self.ctrls["desktop"] = btn(ID_DESKTOP, "设置默认桌面")
         self.ctrls["desktop_unlock"] = btn(ID_DESKTOP_UNLOCK, "解除桌面锁定")
+        for label in ("课堂", "控制", "屏幕", "教学", "限制"):
+            self.ctrls["label:" + label] = add_ctl(
+                hwnd, "STATIC", label, WS_CHILD | WS_VISIBLE, 8, 8, 36, 18, font=font,
+            )
         self.ctrls["summary"] = add_ctl(
             hwnd, "STATIC", "在线 0 · 共 0", WS_CHILD | WS_VISIBLE, 0, 0, 260, 20, ID_SUMMARY, font=font,
         )
@@ -1406,41 +1675,52 @@ class TeacherMainWindow(object):
         if not self.hwnd:
             return
         cw, ch = _client_size(self.hwnd)
-        header_h = 58
-        toolbar_h = 70
+        header_h = 62
         footer_h = 28
-        list_w = 280
+        list_w = 300
         pad = 8
         move = user32.MoveWindow
-        move(self.ctrls["brand"], 12, 8, 320, 24, True)
-        move(self.ctrls["status"], 340, 10, 200, 22, True)
-        move(self.ctrls["code"], 550, 10, 200, 22, True)
+        self._header_h = header_h
+        self._footer_h = footer_h
+        move(self.ctrls["brand"], 12, 8, 420, 24, True)
+        move(self.ctrls["status"], 440, 10, 160, 22, True)
+        move(self.ctrls["code"], 610, 10, 200, 22, True)
         move(self.ctrls["password"], cw - 320, 8, 80, 26, True)
         move(self.ctrls["browser"], cw - 230, 8, 210, 26, True)
-        move(self.ctrls["ip"], 12, 34, cw - 24, 20, True)
-        row1 = [
-            "class", "refresh_code", "lock_all", "unlock_all", "announce",
-            "question", "file", "restrict", "restrict_lists",
-        ]
-        row2 = ["broadcast", "shrink", "broadcast_image", "desktop", "desktop_unlock"]
-        widths = {
-            "class": 90, "refresh_code": 64, "lock_all": 90, "unlock_all": 90,
-            "announce": 80, "question": 80, "file": 80, "restrict": 170,
-            "restrict_lists": 120, "broadcast": 120, "shrink": 90,
-            "broadcast_image": 90, "desktop": 170, "desktop_unlock": 120,
-        }
+        move(self.ctrls["ip"], 12, 36, cw - 24, 20, True)
 
-        def place(names, y):
-            x = pad
-            for name in names:
-                w = widths.get(name, 90)
+        items, toolbar_h = layout_toolbar(cw, start_y=header_h + 6)
+        self._toolbar_h = toolbar_h
+        placed = set()
+        for item in items:
+            name = item["name"]
+            hwnd = self.ctrls.get(name)
+            if not hwnd:
+                continue
+            move(hwnd, item["x"], item["y"], item["w"], item["h"], True)
+            placed.add(name)
+        # 绝不要把没排上的按钮留在 (0,0)；即便异常也放到工具栏下一行继续排
+        leftover = []
+        for name in (
+            "class", "refresh_code", "lock_all", "unlock_all", "remote",
+            "broadcast", "shrink", "broadcast_image", "announce", "question", "file",
+            "restrict", "restrict_lists", "desktop", "desktop_unlock",
+        ):
+            key_label = None
+            if name not in placed and self.ctrls.get(name):
+                leftover.append(name)
+        if leftover:
+            x, y = pad, header_h + toolbar_h
+            for name in leftover:
+                w = 90
                 if x + w > cw - pad:
-                    break
+                    x = pad
+                    y += 32
                 move(self.ctrls[name], x, y, w, 26, True)
                 x += w + 6
+            toolbar_h = (y + 32) - header_h
+            self._toolbar_h = toolbar_h
 
-        place(row1, header_h + 6)
-        place(row2, header_h + 36)
         body_y = header_h + toolbar_h
         body_h = max(80, ch - body_y - footer_h)
         move(self.ctrls["summary"], pad, body_y + 4, list_w - 16, 20, True)
@@ -1479,21 +1759,23 @@ class TeacherMainWindow(object):
             user32.EnableWindow(self.ctrls["desktop_unlock"], 1 if caps["desktop_unlock_enabled"] else 0)
         self._reload_list(state)
         self._refresh_actions()
+        self.remote_id = state.get("remote_device_id")
+        if self.ctrls.get("remote"):
+            set_text(self.ctrls["remote"], "停止控制" if self.remote_id else "远程控制")
+        if self.ctrls.get("class"):
+            user32.InvalidateRect(self.ctrls["class"], None, True)
         if self.wall:
-            entries = []
-            for s in state_view.wall_students(state):
-                entries.append({
-                    "id": s.get("device_id"),
-                    "name": s.get("name") or "学生",
-                    "locked": s.get("locked"),
-                    "at": s.get("thumb_at"),
-                })
-            self.wall.set_tiles(entries)
+            entries = build_wall_entries(state, self.thumbs, remote_device_id=self.remote_id)
+            self.wall.set_tiles(entries, empty_message=wall_empty_message(state))
         if self.focus and self.focus.hwnd:
             stu = state_view.find_student(state, self.focus.device_id)
             if stu:
                 self.focus.refresh_button(stu.get("locked"))
-                set_text(self.focus.hwnd, "%s - 查看屏幕" % (stu.get("name") or "学生"))
+            if not state.get("class_active"):
+                self.focus.set_controlling(False)
+                self.remote_id = None
+            else:
+                self.focus.set_controlling(self.focus.device_id == self.remote_id)
 
     def _reload_list(self, state):
         lb = self.ctrls.get("list")
@@ -1560,10 +1842,20 @@ class TeacherMainWindow(object):
     def _open_focus(self, device_id):
         if not device_id:
             return
+        if not (self.client.state or {}).get("class_active"):
+            message_box(
+                "查看屏幕",
+                "请先点左上角「开始上课」，学生机才会传来画面。",
+                MB_OK | MB_ICONINFORMATION,
+                self.hwnd,
+            )
+            return
         if self.focus and self.focus.hwnd:
             if self.focus.device_id == device_id:
                 user32.SetForegroundWindow(self.focus.hwnd)
                 return
+            # 换学生时先停掉当前远程控制
+            self._set_remote(self.focus.device_id, False)
             self.focus.close()
         self.call_api(lambda: self.client.set_focus(device_id))
 
@@ -1574,11 +1866,42 @@ class TeacherMainWindow(object):
             else:
                 self.call_api(lambda: self.client.lock([sid]))
 
-        def on_close(_sid):
+        def on_close(sid):
+            self._set_remote(sid, False)
             self.focus = None
             self.call_api(lambda: self.client.set_focus(None))
 
-        self.focus = FocusWindow(self.hwnd, self.client, device_id, self.font, on_lock, on_close)
+        def on_remote(sid, start):
+            self._set_remote(sid, start)
+
+        def on_input(sid, events):
+            if sid and events:
+                self._remote_q.put((sid, events))
+
+        self.focus = FocusWindow(
+            self.hwnd, self.client, device_id, self.font,
+            on_lock, on_close, on_remote=on_remote, on_input=on_input,
+        )
+        if self.remote_id == device_id:
+            self.focus.set_controlling(True)
+
+    def _set_remote(self, device_id, start):
+        if not device_id:
+            return
+        if start:
+            if not (self.client.state or {}).get("class_active"):
+                message_box(
+                    "远程控制",
+                    "请先点「开始上课」，再打开该学生的「查看屏幕」，然后点「远程控制」。\n"
+                    "教师机和学生机都需要升级到 1.2.7，旧版学生端无法被控制。",
+                    MB_OK | MB_ICONINFORMATION,
+                    self.hwnd,
+                )
+                return
+            self.call_api(lambda s=device_id: self.client.remote_start(s))
+        else:
+            if self.remote_id == device_id or not device_id:
+                self.call_api(lambda s=device_id: self.client.remote_stop(s))
 
     def _handle_command(self, cid):
         if cid == ID_STUDENT_LIST:
@@ -1739,6 +2062,17 @@ class TeacherMainWindow(object):
                 sid = self.selected_id
                 self.call_api(lambda s=sid: self.client.revoke(s))
             return
+        if cid == ID_REMOTE:
+            if self.remote_id:
+                self._set_remote(self.remote_id, False)
+                return
+            if not self.selected_id:
+                message_box("远程控制", "请先在左侧名单或屏幕墙选择一名已加入的学生。", MB_OK | MB_ICONINFORMATION, self.hwnd)
+                return
+            self._open_focus(self.selected_id)
+            if self.focus and self.focus.hwnd:
+                self._set_remote(self.selected_id, True)
+            return
         if cid == ID_VIEW:
             if self.selected_id:
                 self._open_focus(self.selected_id)
@@ -1762,8 +2096,26 @@ class TeacherMainWindow(object):
                 return
             if kind == "state" and payload is not None:
                 self._apply_state(payload)
-            elif kind == "thumb" and payload and self.wall:
-                self.wall.update_image(payload.get("id"), payload.get("at"), payload.get("bytes"))
+            elif kind == "thumb" and payload:
+                sid = payload.get("id")
+                at = payload.get("at")
+                data = payload.get("bytes")
+                err = payload.get("error")
+                if data:
+                    self.thumbs.mark_fetched(sid, at, data)
+                elif err:
+                    import time as _time
+                    self.thumbs.mark_error(sid, at, err, _time.time())
+                if self.wall:
+                    missing = self.wall.update_image(sid, at, data, error=err)
+                    if missing:
+                        # 格子还没建：缓存已写入，等下一次 set_tiles
+                        st = self.client.state or {}
+                        if st.get("class_active"):
+                            self.wall.set_tiles(
+                                build_wall_entries(st, self.thumbs, remote_device_id=self.remote_id),
+                                empty_message=wall_empty_message(st),
+                            )
             elif kind == "focus_image" and self.focus and self.focus.hwnd:
                 self.focus.set_image(payload)
             elif kind == "api_ok":
@@ -1793,10 +2145,39 @@ class TeacherMainWindow(object):
             elif kind == "busy":
                 self._busy = bool(payload)
 
+    def _draw_class_button(self, lparam):
+        try:
+            item = DRAWITEMSTRUCT.from_address(int(lparam))
+        except Exception:
+            return
+        if item.CtlID != ID_CLASS:
+            return
+        hdc = item.hDC
+        rc = item.rcItem
+        active = bool((self.client.state or {}).get("class_active"))
+        selected = bool(item.itemState & 0x0001)  # ODS_SELECTED
+        if active:
+            brush = self._end_down_brush if selected else self._end_brush
+            text = "下课"
+        else:
+            brush = self._start_down_brush if selected else self._start_brush
+            text = "开始上课"
+        user32.FillRect(hdc, byref(rc), brush)
+        gdi32.SetBkMode(hdc, TRANSPARENT)
+        gdi32.SetTextColor(hdc, 0x00FFFFFF)
+        font = self.font_title or self.font
+        old = gdi32.SelectObject(hdc, font) if font else None
+        user32.DrawTextW(hdc, text, -1, byref(rc), DT_CENTER | DT_VCENTER | DT_SINGLELINE)
+        if old:
+            gdi32.SelectObject(hdc, old)
+
     def _wndproc(self, hwnd, msg, wparam, lparam):
         if msg == WM_APP_UI:
             self._drain_queue()
             return 0
+        if msg == WM_DRAWITEM:
+            self._draw_class_button(lparam)
+            return 1
         if msg == WM_COMMAND:
             cid = _loword(wparam)
             notify = _hiword(wparam)
@@ -1818,7 +2199,7 @@ class TeacherMainWindow(object):
             return 0
         if msg == WM_GETMINMAXINFO:
             info = MINMAXINFO.from_address(int(lparam))
-            info.ptMinTrackSize.x = 860
+            info.ptMinTrackSize.x = 800
             info.ptMinTrackSize.y = 560
             return 0
         if msg == WM_CTLCOLORSTATIC:
@@ -1834,18 +2215,28 @@ class TeacherMainWindow(object):
                 gdi32.SetTextColor(hdc, COL_OFFLINE)
                 gdi32.SetBkColor(hdc, COL_FOOTER)
                 return int(self._footer_brush)
+            # 工具栏分组标签
+            for name, h in (self.ctrls or {}).items():
+                if name.startswith("label:") and h == ctl:
+                    gdi32.SetTextColor(hdc, COL_HEADER)
+                    gdi32.SetBkColor(hdc, COL_TOOL)
+                    return int(self._tool_brush)
             gdi32.SetTextColor(hdc, 0x00000000)
+            gdi32.SetBkColor(hdc, COL_WALL)
             return int(self._bg_brush)
         if msg == WM_ERASEBKGND:
             hdc = wintypes.HDC(wparam)
             cw, ch = _client_size(hwnd)
-            r = wintypes.RECT(0, 0, cw, 58)
+            header_h = getattr(self, "_header_h", 62)
+            toolbar_h = getattr(self, "_toolbar_h", 70)
+            footer_h = getattr(self, "_footer_h", 28)
+            r = wintypes.RECT(0, 0, cw, header_h)
             user32.FillRect(hdc, byref(r), self._header_brush)
-            r = wintypes.RECT(0, 58, cw, 128)
+            r = wintypes.RECT(0, header_h, cw, header_h + toolbar_h)
             user32.FillRect(hdc, byref(r), self._tool_brush)
-            r = wintypes.RECT(0, 128, cw, ch - 28)
+            r = wintypes.RECT(0, header_h + toolbar_h, cw, ch - footer_h)
             user32.FillRect(hdc, byref(r), self._bg_brush)
-            r = wintypes.RECT(0, ch - 28, cw, ch)
+            r = wintypes.RECT(0, ch - footer_h, cw, ch)
             user32.FillRect(hdc, byref(r), self._footer_brush)
             return 1
         if msg == WM_CLOSE:

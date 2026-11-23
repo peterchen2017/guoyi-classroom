@@ -36,6 +36,8 @@ WM_UI_UNLOCK = WM_APP + 3
 WM_UI_ANNOUNCE = WM_APP + 4
 WM_UI_BROADCAST = WM_APP + 5
 WM_UI_QUIT = WM_APP + 6
+WM_UI_REMOTE_ON = WM_APP + 7
+WM_UI_REMOTE_OFF = WM_APP + 8
 
 WS_OVERLAPPEDWINDOW = 0x00CF0000
 WS_POPUP = 0x80000000
@@ -205,6 +207,9 @@ class WinUI(object):
         self._lockproc = None
         self._stopped = False
         self._font = None
+        self.remote_hwnd = None
+        self._remote_on = False
+        self._remoteproc = None
 
     def start(self):
         self._thread = threading.Thread(target=self._loop, name="classroom-win-ui", daemon=True)
@@ -260,11 +265,20 @@ class WinUI(object):
         self._broadcast_bits = None
         self._post(WM_UI_BROADCAST)
 
+    def show_remote_control(self):
+        self._remote_on = True
+        self._post(WM_UI_REMOTE_ON)
+
+    def hide_remote_control(self):
+        self._remote_on = False
+        self._post(WM_UI_REMOTE_OFF)
+
     def _loop(self):
         self._tid = kernel32.GetCurrentThreadId()
         hinst = kernel32.GetModuleHandleW(None)
         self._wndproc = WNDPROCTYPE(self._status_proc)
         self._lockproc = WNDPROCTYPE(self._lock_proc)
+        self._remoteproc = WNDPROCTYPE(self._remote_proc)
 
         cls = WNDCLASSW()
         cls.style = 0
@@ -285,6 +299,14 @@ class WinUI(object):
         lock_cls.hbrBackground = gdi32.CreateSolidBrush(0x1A1A12)
         lock_cls.lpszClassName = "GuoyiClassroomLock"
         user32.RegisterClassW(byref(lock_cls))
+
+        remote_cls = WNDCLASSW()
+        remote_cls.lpfnWndProc = self._remoteproc
+        remote_cls.hInstance = hinst
+        remote_cls.hCursor = user32.LoadCursorW(None, wintypes.LPCWSTR(32512))
+        remote_cls.hbrBackground = gdi32.CreateSolidBrush(0x001E32C8)  # 醒目红
+        remote_cls.lpszClassName = "GuoyiClassroomRemoteBanner"
+        user32.RegisterClassW(byref(remote_cls))
 
         style = WS_OVERLAPPEDWINDOW ^ WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX
         # 保留关闭按钮但在 WM_CLOSE 中只最小化，避免学生误以为程序已退出。
@@ -346,6 +368,13 @@ class WinUI(object):
                 user32.InvalidateRect(self.lock_hwnd, None, True)
             user32.InvalidateRect(hwnd, None, True)
             return 0
+        if msg == WM_UI_REMOTE_ON:
+            self._ensure_remote_banner()
+            return 0
+        if msg == WM_UI_REMOTE_OFF:
+            if self.remote_hwnd:
+                user32.ShowWindow(self.remote_hwnd, SW_HIDE)
+            return 0
         if msg == WM_UI_ANNOUNCE:
             try:
                 title, text = self._queue.get_nowait()
@@ -357,6 +386,8 @@ class WinUI(object):
             user32.DestroyWindow(hwnd)
             if self.lock_hwnd:
                 user32.DestroyWindow(self.lock_hwnd)
+            if self.remote_hwnd:
+                user32.DestroyWindow(self.remote_hwnd)
             user32.PostQuitMessage(0)
             return 0
         if msg == WM_TRAY:
@@ -411,6 +442,49 @@ class WinUI(object):
         )
         user32.ShowWindow(self.lock_hwnd, SW_SHOW)
         user32.InvalidateRect(self.lock_hwnd, None, True)
+
+
+    def _ensure_remote_banner(self):
+        left, top, width, height = _virtual_screen()
+        bar_h = 48
+        hinst = kernel32.GetModuleHandleW(None)
+        if not self.remote_hwnd:
+            self.remote_hwnd = user32.CreateWindowExW(
+                WS_EX_TOPMOST | 0x00000080,  # WS_EX_TOOLWINDOW
+                "GuoyiClassroomRemoteBanner",
+                "老师正在控制本机",
+                WS_POPUP | WS_VISIBLE,
+                left, top, width, bar_h,
+                None, None, hinst, None,
+            )
+        user32.SetWindowPos(
+            self.remote_hwnd, HWND_TOPMOST, left, top, width, bar_h, SWP_SHOWWINDOW
+        )
+        user32.ShowWindow(self.remote_hwnd, SW_SHOW)
+        user32.InvalidateRect(self.remote_hwnd, None, True)
+
+    def _remote_proc(self, hwnd, msg, wparam, lparam):
+        if msg == WM_CLOSE:
+            return 0
+        if msg == WM_PAINT:
+            ps = PAINTSTRUCT()
+            hdc = user32.BeginPaint(hwnd, byref(ps))
+            rect = wintypes.RECT()
+            user32.GetClientRect(hwnd, byref(rect))
+            brush = gdi32.CreateSolidBrush(0x001E32C8)
+            user32.FillRect(hdc, byref(rect), brush)
+            gdi32.DeleteObject(brush)
+            gdi32.SetBkMode(hdc, 1)
+            gdi32.SetTextColor(hdc, 0x00FFFFFF)
+            if self._font:
+                gdi32.SelectObject(hdc, self._font)
+            user32.DrawTextW(
+                hdc, "老师正在控制本机", -1, byref(rect),
+                0x00000001 | 0x00000004 | 0x00000020,  # center | vcenter | singleline
+            )
+            user32.EndPaint(hwnd, byref(ps))
+            return 0
+        return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _lock_proc(self, hwnd, msg, wparam, lparam):
         if msg == WM_CLOSE:

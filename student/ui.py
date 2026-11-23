@@ -44,6 +44,12 @@ class ConsoleUI(object):
     def clear_broadcast(self):
         print("[广播] 教师屏幕广播已结束", flush=True)
 
+    def show_remote_control(self):
+        print("[远程控制] 老师正在控制本机", flush=True)
+
+    def hide_remote_control(self):
+        print("[远程控制] 老师已停止控制本机", flush=True)
+
 
 def create_ui(sim=False, no_ui=False):
     if no_ui or sim or sys.platform != "win32":

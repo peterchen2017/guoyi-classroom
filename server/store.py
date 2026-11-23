@@ -77,6 +77,7 @@ class Store(object):
         self.focus_frames = {}
         self.broadcast_frame = None
         self.broadcast_frame_at = 0.0
+        self.remote_device_id = None
         self.announcement = ""
         self.announcement_at = 0.0
         self.web_restrict_enabled = False
@@ -86,6 +87,7 @@ class Store(object):
         self.blocked_extensions = default_extensions()
         self.desktop_locked = False
         self.desktop_filename = ""
+        self.remote_device_id = None
         self._load_or_init()
 
     def _load_or_init(self):
@@ -165,6 +167,7 @@ class Store(object):
             "web_restrict": self.web_restrict_public(),
             "desktop": self.desktop_public(),
             "students": [s.public() for s in self.sorted_students()],
+            "remote_device_id": self.remote_device_id,
         }
 
     def desktop_public(self):
@@ -290,3 +293,4 @@ class Store(object):
         self.focus_frames.clear()
         self.broadcast_frame = None
         self.broadcast_frame_at = 0.0
+        self.remote_device_id = None

@@ -151,6 +151,7 @@ class StudentClient(object):
         self.locked = False
         self.broadcast_active = False
         self.focus_on = False
+        self.remote_active = False
         self._stop_send = asyncio.Event()
         self._sender_task = None
         self._running = True
@@ -171,6 +172,7 @@ class StudentClient(object):
             "登记：%s" % ("已加入" if self.approved else "等待教师允许"),
             "课堂：%s" % ("上课中" if self.class_active else "未上课（不传屏）"),
             "锁屏：%s" % ("是" if self.locked else "否"),
+            "远程控制：%s" % ("老师正在控制本机" if self.remote_active else "否"),
             "上网限制：%s" % ("已限制网页游戏和下载" if self.web_restrict_on else "未开启"),
             "默认桌面：%s" % self.desktop.status_label(),
             server_config.COPYRIGHT,
@@ -179,6 +181,30 @@ class StudentClient(object):
 
     def _refresh_ui(self):
         self.ui.set_status(self._status_text())
+
+    def _start_remote(self):
+        if not (self.approved and self.class_active):
+            return
+        if self.remote_active:
+            return
+        self.remote_active = True
+        try:
+            self.ui.show_remote_control()
+        except Exception:
+            pass
+        self.log.write("remote_start")
+        self._refresh_ui()
+
+    def _stop_remote(self, reason=""):
+        if not self.remote_active:
+            return
+        self.remote_active = False
+        try:
+            self.ui.hide_remote_control()
+        except Exception:
+            pass
+        self.log.write("remote_stop", reason=reason)
+        self._refresh_ui()
 
     def _apply_restrict(self, msg):
         msg = msg or {}
@@ -214,6 +240,8 @@ class StudentClient(object):
             desk = msg.get("desktop")
             if desk:
                 await self._apply_desktop(desk)
+            if msg.get("remote_active"):
+                self._start_remote()
             self._refresh_ui()
         elif typ == "approved":
             self.approved = True
@@ -230,6 +258,7 @@ class StudentClient(object):
             self._apply_restrict({"enabled": False})
             self.ui.hide_lock()
             self.ui.clear_broadcast()
+            self._stop_remote("revoked")
             self.log.write("revoked")
             self._refresh_ui()
         elif typ == "class_start":
@@ -251,6 +280,7 @@ class StudentClient(object):
             self._apply_restrict({"enabled": False})
             self.ui.hide_lock()
             self.ui.clear_broadcast()
+            self._stop_remote("class_end")
             self.log.write("class_end")
             self._refresh_ui()
         elif typ == "web_restrict":
@@ -294,6 +324,17 @@ class StudentClient(object):
         elif typ == "focus":
             self.focus_on = bool(msg.get("on"))
             self.log.write("focus", on=self.focus_on)
+        elif typ == "remote_start":
+            self._start_remote()
+        elif typ == "remote_stop":
+            self._stop_remote("teacher")
+        elif typ == "remote_input":
+            if self.remote_active and self.class_active and self.approved:
+                try:
+                    from student.remote_input import apply_events
+                    apply_events(msg.get("events") or [])
+                except Exception as exc:
+                    self.log.write("remote_input_error", error=str(exc))
         elif typ == "error":
             self.ui.show_announce("连接提示", msg.get("message") or "发生错误")
             self.log.write("error", message=msg.get("message"))
@@ -451,6 +492,7 @@ class StudentClient(object):
                     self.log.write("disconnect", error=str(exc))
                     self.approved = False
                     self.class_active = False
+                    self._stop_remote("disconnect")
                     await self._stop_sending(reason="disconnect")
                     self.ui.set_status(self._status_text() + "\n连接中断，%s 秒后重试\n%s" % (backoff, exc))
                     await asyncio.sleep(backoff)
