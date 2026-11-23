@@ -18,6 +18,8 @@ if str(ROOT) not in sys.path:
 
 os.chdir(str(ROOT))
 
+from shared.version import VERSION, TEACHER_WINDOW_TITLE
+
 LOG_NAME = "start_teacher.log"
 
 
@@ -105,6 +107,7 @@ def set_console_title(title):
 def write_header(fp):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fp.write("===== %s 启动教师机 =====\n" % now)
+    fp.write("VERSION=%s\n" % VERSION)
     fp.write("ROOT=%s\n" % ROOT)
     fp.write("python=%s\n" % sys.version.replace("\n", " "))
     fp.write("executable=%s\n" % sys.executable)
@@ -191,7 +194,7 @@ def open_browser(url):
 
 def start_running_indicator(url):
     """控制台标题 + 一个很小的常驻窗口，避免只剩浏览器时被误以为没启动。"""
-    set_console_title("课堂管理运行中 - 乐昌国艺书院教师机")
+    set_console_title(TEACHER_WINDOW_TITLE)
     if sys.platform != "win32":
         return
 
@@ -244,8 +247,8 @@ def start_running_indicator(url):
             ID_OPEN = 1001
             class_name = "GuoyiTeacherStatus"
             lines = [
-                "课堂管理运行中",
-                "乐昌国艺书院  教师机",
+                TEACHER_WINDOW_TITLE,
+                "乐昌国艺书院  教师机  v%s" % VERSION,
                 url,
                 "关闭本窗口不会退出课堂管理。",
                 "请关闭黑色控制台窗口来退出。",
@@ -283,7 +286,7 @@ def start_running_indicator(url):
                 pass
             style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE
             hwnd = user32.CreateWindowExW(
-                0, class_name, "课堂管理运行中", style,
+                0, class_name, TEACHER_WINDOW_TITLE, style,
                 80, 80, 440, 220,
                 None, None, wc.hInstance, None,
             )
@@ -320,7 +323,7 @@ def _open_when_ready(url, port):
 def main():
     from server import config
     url = "http://127.0.0.1:%s" % config.PORT
-    set_console_title("课堂管理运行中 - 乐昌国艺书院教师机")
+    set_console_title(TEACHER_WINDOW_TITLE)
     start_running_indicator(url)
     threading.Thread(target=_open_when_ready, args=(url, config.PORT), daemon=True).start()
     from server.app import main as server_main

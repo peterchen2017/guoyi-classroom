@@ -15,6 +15,8 @@ if str(ROOT) not in sys.path:
 
 os.chdir(str(ROOT))
 
+from shared.version import VERSION, STUDENT_WINDOW_TITLE
+
 LOG_NAME = "start_student.log"
 
 
@@ -88,6 +90,7 @@ def message_box(title, text, icon=0x10):
 def write_header(fp):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fp.write("===== %s 启动学生机 =====\n" % now)
+    fp.write("VERSION=%s\n" % VERSION)
     fp.write("ROOT=%s\n" % ROOT)
     fp.write("python=%s\n" % sys.version.replace("\n", " "))
     fp.write("executable=%s\n" % sys.executable)
@@ -134,7 +137,7 @@ def run():
         if sys.platform == "win32":
             try:
                 import ctypes
-                ctypes.windll.kernel32.SetConsoleTitleW("课堂管理运行中 - 乐昌国艺书院学生机")
+                ctypes.windll.kernel32.SetConsoleTitleW(STUDENT_WINDOW_TITLE)
             except Exception:
                 pass
         fp = open_log(append=True)
