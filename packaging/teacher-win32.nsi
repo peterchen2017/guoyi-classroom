@@ -18,8 +18,9 @@ BrandingText "版权所有 © 乐昌国艺书院    开发者：陈老师"
 !insertmacro MUI_PAGE_LICENSE "teacher-license.txt"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_RUN "$INSTDIR\start_teacher.cmd"
+!define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_TEXT "安装完成后立即启动教师机"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchTeacher
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -30,9 +31,11 @@ Section "Teacher" SecMain
   File /r "staging-teacher-win32\*.*"
 
   CreateDirectory "$SMPROGRAMS\乐昌国艺书院"
-  CreateShortCut "$SMPROGRAMS\乐昌国艺书院\机房课堂管理-教师机.lnk" "$INSTDIR\start_teacher.cmd" "" "$INSTDIR\python\python.exe" 0
+  ; CreateShortCut 的工作目录取当前 $OUTDIR，必须先回到安装目录
+  SetOutPath "$INSTDIR"
+  CreateShortCut "$SMPROGRAMS\乐昌国艺书院\机房课堂管理-教师机.lnk" "$INSTDIR\start_teacher.cmd" "" "$INSTDIR\python\python.exe" 0 SW_SHOWNORMAL
   CreateShortCut "$SMPROGRAMS\乐昌国艺书院\卸载教师机.lnk" "$INSTDIR\卸载教师机.exe"
-  CreateShortCut "$DESKTOP\机房课堂管理-教师机.lnk" "$INSTDIR\start_teacher.cmd" "" "$INSTDIR\python\python.exe" 0
+  CreateShortCut "$DESKTOP\机房课堂管理-教师机.lnk" "$INSTDIR\start_teacher.cmd" "" "$INSTDIR\python\python.exe" 0 SW_SHOWNORMAL
 
   ; 无管理员权限时防火墙规则会失败，不能因此中止安装
   ClearErrors
@@ -51,7 +54,7 @@ Section "Teacher" SecMain
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomTeacher" "DisplayName" "乐昌国艺书院 机房课堂管理（教师机）"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomTeacher" "UninstallString" "$INSTDIR\卸载教师机.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomTeacher" "Publisher" "乐昌国艺书院"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomTeacher" "DisplayVersion" "1.2.1"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomTeacher" "DisplayVersion" "1.2.2"
 SectionEnd
 
 Section "Uninstall"
@@ -69,3 +72,9 @@ Section "Uninstall"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\GuoyiClassroomTeacher"
   RMDir /r "$INSTDIR"
 SectionEnd
+
+Function LaunchTeacher
+  ; Win7 上 MUI_FINISHPAGE_RUN 直接 Exec .cmd 常失败，改用 ShellExecute
+  SetOutPath "$INSTDIR"
+  ExecShell "open" "$INSTDIR\start_teacher.cmd"
+FunctionEnd

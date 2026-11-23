@@ -44,3 +44,5 @@ cd /workspace/classroom-lab
 ```
 
 验证默认桌面的设置、锁定、被改后恢复、模拟重启后重新应用，以及解除锁定后恢复原壁纸（Linux 为模拟实现，不调用 Windows API）。`./start_verify.sh` 已包含此项。完整流程里还会检查：下发到三台学生机、下课不解除锁定、重启学生端后仍锁定、老师解除后恢复。
+
+另请运行 `tests/test_win7_deps.py`（`./start_verify.sh` 已包含）：确认 Windows 安装依赖不包含 `pydantic-core`，以及教师/学生启动器失败时会写出可发给开发者的日志。

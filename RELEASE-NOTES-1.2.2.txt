@@ -1,0 +1,14 @@
+乐昌国艺书院 机房课堂管理 1.2.2
+
+修复：Windows 7 教师机启动时报
+ImportError: DLL load failed while importing _pydantic_core: 找不到指定的程序。
+
+改动：改用 FastAPI 0.99.1 + Pydantic 1.10.18 纯 Python 轮子，安装包不再包含 pydantic-core。
+启动失败会写入安装目录 start_teacher.log / start_student.log，并弹出中文提示。
+
+已在 Windows 10/11 上使用 1.2.1 学生端的电脑不必立刻重装。
+教师机（尤其 Windows 7）请改用 1.2.2。
+
+默认安装目录：
+C:\\Users\\用户名\\AppData\\Local\\GuoyiClassroom\\Teacher
+C:\\Users\\用户名\\AppData\\Local\\GuoyiClassroom\\Student

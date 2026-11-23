@@ -8,7 +8,7 @@ from pathlib import Path
 APP_NAME = "机房课堂管理"
 SCHOOL_NAME = "乐昌国艺书院"
 DEVELOPER = "陈老师"
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 # 安装包、窗口、关于和控制台页脚统一署名。
 COPYRIGHT = "版权所有 © 乐昌国艺书院    开发者：陈老师"
 
