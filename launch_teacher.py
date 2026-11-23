@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""教师机启动器：启动课堂服务、写启动日志，并打开本机控制台。"""
+"""教师机启动器：启动课堂服务、写启动日志，并打开原生教师主窗口。"""
 
 from __future__ import print_function
 
@@ -192,142 +192,70 @@ def open_browser(url):
         return False
 
 
-def start_running_indicator(url):
-    """控制台标题 + 一个很小的常驻窗口，避免只剩浏览器时被误以为没启动。"""
-    set_console_title(TEACHER_WINDOW_TITLE)
-    if sys.platform != "win32":
-        return
+
+def start_uvicorn_thread(host, port):
+    """在后台线程运行课堂服务，主线程用来跑原生窗口。"""
+    import uvicorn
+    from server.app import app, _print_banner
+
+    class _Server(uvicorn.Server):
+        def install_signal_handlers(self):
+            pass
+
+    cfg = uvicorn.Config(app, host=host, port=port, log_level="info", loop="asyncio")
+    server = _Server(cfg)
 
     def _run():
-        try:
-            import ctypes
-            from ctypes import wintypes
+        _print_banner()
+        server.run()
 
-            user32 = ctypes.windll.user32
-            kernel32 = ctypes.windll.kernel32
-            IS_64 = ctypes.sizeof(ctypes.c_void_p) == 8
-            WNDPROCTYPE = ctypes.WINFUNCTYPE(
-                ctypes.c_longlong if IS_64 else ctypes.c_long,
-                wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
-            )
-
-            class WNDCLASSW(ctypes.Structure):
-                _fields_ = [
-                    ("style", wintypes.UINT),
-                    ("lpfnWndProc", WNDPROCTYPE),
-                    ("cbClsExtra", ctypes.c_int),
-                    ("cbWndExtra", ctypes.c_int),
-                    ("hInstance", wintypes.HINSTANCE),
-                    ("hIcon", wintypes.HICON),
-                    ("hCursor", wintypes.HCURSOR),
-                    ("hbrBackground", wintypes.HBRUSH),
-                    ("lpszMenuName", wintypes.LPCWSTR),
-                    ("lpszClassName", wintypes.LPCWSTR),
-                ]
-
-            class PAINTSTRUCT(ctypes.Structure):
-                _fields_ = [
-                    ("hdc", wintypes.HDC),
-                    ("fErase", wintypes.BOOL),
-                    ("rcPaint", wintypes.RECT),
-                    ("fRestore", wintypes.BOOL),
-                    ("fIncUpdate", wintypes.BOOL),
-                    ("rgbReserved", wintypes.BYTE * 32),
-                ]
-
-            WM_DESTROY = 0x0002
-            WM_CLOSE = 0x0010
-            WM_PAINT = 0x000F
-            WM_COMMAND = 0x0111
-            WS_OVERLAPPED = 0x00000000
-            WS_CAPTION = 0x00C00000
-            WS_SYSMENU = 0x00080000
-            WS_MINIMIZEBOX = 0x00020000
-            WS_VISIBLE = 0x10000000
-            ID_OPEN = 1001
-            class_name = "GuoyiTeacherStatus"
-            lines = [
-                TEACHER_WINDOW_TITLE,
-                "乐昌国艺书院  教师机  v%s" % VERSION,
-                url,
-                "关闭本窗口不会退出课堂管理。",
-                "请关闭黑色控制台窗口来退出。",
-            ]
-
-            def _proc(hwnd, msg, wparam, lparam):
-                if msg == WM_PAINT:
-                    ps = PAINTSTRUCT()
-                    hdc = user32.BeginPaint(hwnd, ctypes.byref(ps))
-                    rect = wintypes.RECT(12, 10, 420, 150)
-                    text = "\r\n".join(lines)
-                    user32.DrawTextW(hdc, text, -1, ctypes.byref(rect), 0x00000010)
-                    user32.EndPaint(hwnd, ctypes.byref(ps))
-                    return 0
-                if msg == WM_COMMAND and (wparam & 0xFFFF) == ID_OPEN:
-                    open_browser(url)
-                    return 0
-                if msg == WM_CLOSE:
-                    user32.DestroyWindow(hwnd)
-                    return 0
-                if msg == WM_DESTROY:
-                    user32.PostQuitMessage(0)
-                    return 0
-                return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
-
-            wndproc = WNDPROCTYPE(_proc)
-            wc = WNDCLASSW()
-            wc.lpfnWndProc = wndproc
-            wc.hInstance = kernel32.GetModuleHandleW(None)
-            wc.hbrBackground = 5 + 1
-            wc.lpszClassName = class_name
-            wc.hCursor = user32.LoadCursorW(None, ctypes.c_void_p(32512))
-            if not user32.RegisterClassW(ctypes.byref(wc)):
-                # 重复注册时仍可继续创建窗口
-                pass
-            style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE
-            hwnd = user32.CreateWindowExW(
-                0, class_name, TEACHER_WINDOW_TITLE, style,
-                80, 80, 440, 220,
-                None, None, wc.hInstance, None,
-            )
-            if not hwnd:
-                return
-            user32.CreateWindowExW(
-                0, "BUTTON", "打开控制台", 0x50000000,
-                140, 150, 140, 28,
-                hwnd, ctypes.c_void_p(ID_OPEN), wc.hInstance, None,
-            )
-            user32.ShowWindow(hwnd, 1)
-            user32.UpdateWindow(hwnd)
-            msg = wintypes.MSG()
-            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                user32.TranslateMessage(ctypes.byref(msg))
-                user32.DispatchMessageW(ctypes.byref(msg))
-            # 保持 wndproc 引用到循环结束，防止被回收
-            _ = wndproc
-        except Exception:
-            return
-
-    threading.Thread(target=_run, daemon=True).start()
+    thread = threading.Thread(target=_run, name="classroom-teacher-http", daemon=True)
+    thread.start()
+    return server, thread
 
 
-def _open_when_ready(url, port):
-    if wait_port("127.0.0.1", port, timeout=45):
-        ok = open_browser(url)
-        print("已打开浏览器：%s（成功=%s）" % (url, ok), flush=True)
-    else:
-        print("等待服务端口 %s 超时，仍尝试打开浏览器。" % port, flush=True)
-        open_browser(url)
+def shutdown_server(server, timeout=2):
+    if server is None:
+        return
+    try:
+        server.should_exit = True
+    except Exception:
+        pass
+    time.sleep(min(0.4, timeout))
 
 
 def main():
     from server import config
     url = "http://127.0.0.1:%s" % config.PORT
     set_console_title(TEACHER_WINDOW_TITLE)
-    start_running_indicator(url)
-    threading.Thread(target=_open_when_ready, args=(url, config.PORT), daemon=True).start()
-    from server.app import main as server_main
-    server_main([])
+    if sys.platform != "win32":
+        # Linux 开发机没有 Win32 主窗口，只启动服务（测试通过 python -m server）。
+        from server.app import main as server_main
+        server_main([])
+        return
+
+    server, _thread = start_uvicorn_thread(config.HOST, config.PORT)
+    if not wait_port("127.0.0.1", config.PORT, timeout=45):
+        report_failure("教师机服务未能在 45 秒内就绪")
+        shutdown_server(server)
+        sys.exit(1)
+    print("服务已就绪，正在打开教师主窗口（不必使用浏览器）…", flush=True)
+    print("本机控制台备用地址：%s" % url, flush=True)
+    try:
+        from teacher.win_console import run_main_window
+        run_main_window(
+            url,
+            open_browser_fn=open_browser,
+            lan_ips=config.lan_ips(),
+            port=config.PORT,
+        )
+    except Exception:
+        report_failure("无法打开教师主窗口")
+        shutdown_server(server)
+        sys.exit(1)
+    print("教师主窗口已关闭，正在退出。", flush=True)
+    shutdown_server(server)
+    os._exit(0)
 
 
 def run():

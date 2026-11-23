@@ -873,15 +873,17 @@ def _print_banner():
     print("=" * 60)
     print("  %s · %s  v%s" % (config.SCHOOL_NAME, config.APP_NAME, config.VERSION))
     print("=" * 60)
-    print("  本机控制台:  http://127.0.0.1:%s" % config.PORT)
+    print("  教师主窗口将在本机自动打开，无需安装浏览器。")
+    print("  本机备用网页:  http://127.0.0.1:%s" % config.PORT)
     if ips:
         for ip in ips:
-            print("  手机/学生请打开: http://%s:%s" % (ip, config.PORT))
+            print("  手机请打开: http://%s:%s" % (ip, config.PORT))
     else:
         print("  未能自动识别局域网 IP，请在教师机上运行 ipconfig 查看。")
     print("  UDP 发现端口: %s" % config.DISCOVERY_PORT)
     print("  请放行防火墙 TCP %s 与 UDP %s" % (config.PORT, config.DISCOVERY_PORT))
-    print("  请使用 Chrome 或新版 Edge 打开控制台（不要用 IE）。")
+    print("  上课请使用软件主窗口。关闭主窗口即退出。")
+    print("  手机网页请用手机自带浏览器（不要用 IE）。")
     print("  默认教师账号见 README，首次使用请立即修改密码。")
     print("  %s" % config.COPYRIGHT)
     print("=" * 60)

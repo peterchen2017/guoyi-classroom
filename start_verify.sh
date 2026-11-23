@@ -7,8 +7,9 @@ if [ ! -x .venv/bin/python ]; then
   .venv/bin/pip install -r requirements.txt
 fi
 export CLASSROOM_PYTHON="$(pwd)/.venv/bin/python"
-echo "开始验证 Win7 依赖、默认桌面锁定、上网限制与核心流程…"
+echo "开始验证 Win7 依赖、教师 API 客户端、默认桌面锁定、上网限制与核心流程…"
 .venv/bin/python tests/test_win7_deps.py
+.venv/bin/python tests/test_teacher_client.py
 .venv/bin/python tests/test_desktop.py
 .venv/bin/python tests/test_web_filter.py
 exec .venv/bin/python tests/test_flow.py
