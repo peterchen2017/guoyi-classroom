@@ -21,6 +21,11 @@ from shared.win_types import wintypes
 
 from shared.version import TEACHER_WINDOW_TITLE, VERSION
 from teacher.api_client import AuthExpired, TeacherApiError, TeacherClient
+from teacher.credentials import (
+    CredentialStore,
+    apply_remember_choice,
+    reset_teacher_password_to_default,
+)
 from teacher import state_view
 
 user32 = ctypes.windll.user32
@@ -206,6 +211,8 @@ IDD_LOCKDESK = 212
 IDD_APPLY = 213
 IDD_UNLOCK = 214
 IDD_INFO = 215
+IDD_REMEMBER = 216
+IDD_RESET_PASSWORD = 217
 
 FILE_FILTER = (
     "课堂资料 (C++ / 文本)\0*.cpp;*.h;*.hpp;*.cc;*.cxx;*.c;*.h++;*.hxx;*.hh;*.txt;*.in;*.out;*.md\0"
@@ -547,6 +554,8 @@ def _run_simple_dialog(class_name, title, width, height, build, parent=None, fon
                     state["on_ok"]()
                 return 0
             if cid == IDCANCEL:
+                if state.get("on_cancel"):
+                    state["on_cancel"]()
                 state["result"] = None
                 user32.DestroyWindow(hwnd)
                 return 0
@@ -554,6 +563,8 @@ def _run_simple_dialog(class_name, title, width, height, build, parent=None, fon
                 state["on_command"](cid)
                 return 0
         if msg == WM_CLOSE:
+            if state.get("on_cancel"):
+                state["on_cancel"]()
             state["result"] = None
             user32.DestroyWindow(hwnd)
             return 0
@@ -584,33 +595,61 @@ def _run_simple_dialog(class_name, title, width, height, build, parent=None, fon
     return state["result"]
 
 
-def ask_login(parent=None, username="teacher", error=""):
+def ask_login(parent=None, username="teacher", password="", remember=False, error="",
+              cred_store=None):
+    store = cred_store
+
     def build(state):
         hwnd = state["hwnd"]
         font = state["font"]
         add_ctl(hwnd, "STATIC", "乐昌国艺书院  机房课堂管理  v%s" % VERSION,
-                WS_CHILD | WS_VISIBLE, 24, 16, 360, 24, font=font)
-        add_ctl(hwnd, "STATIC", "教师账号", WS_CHILD | WS_VISIBLE, 24, 56, 80, 22, font=font)
+                WS_CHILD | WS_VISIBLE, 24, 16, 400, 24, font=font)
+        add_ctl(hwnd, "STATIC", "教师账号", WS_CHILD | WS_VISIBLE, 24, 52, 80, 22, font=font)
         ed_user = add_ctl(
             hwnd, "EDIT", username or "",
             WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | ES_LEFT,
-            110, 54, 250, 24, IDD_USER, WS_EX_CLIENTEDGE, font,
+            110, 50, 270, 24, IDD_USER, WS_EX_CLIENTEDGE, font,
         )
-        add_ctl(hwnd, "STATIC", "密码", WS_CHILD | WS_VISIBLE, 24, 96, 80, 22, font=font)
+        add_ctl(hwnd, "STATIC", "密码", WS_CHILD | WS_VISIBLE, 24, 92, 80, 22, font=font)
         ed_pass = add_ctl(
-            hwnd, "EDIT", "",
+            hwnd, "EDIT", password or "",
             WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD,
-            110, 94, 250, 24, IDD_PASS, WS_EX_CLIENTEDGE, font,
+            110, 90, 270, 24, IDD_PASS, WS_EX_CLIENTEDGE, font,
+        )
+        chk = add_ctl(
+            hwnd, "BUTTON", "记住密码（下次自动填写，仍需点登录）",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_LEFT,
+            110, 124, 300, 24, IDD_REMEMBER, font=font,
+        )
+        user32.SendMessageW(chk, BM_SETCHECK, BST_CHECKED if remember else BST_UNCHECKED, 0)
+        add_ctl(
+            hwnd, "STATIC",
+            "默认账号 teacher。若以前改过密码，升级后仍用改过的那个。",
+            WS_CHILD | WS_VISIBLE, 24, 156, 400, 20, font=font,
+        )
+        add_ctl(
+            hwnd, "STATIC",
+            "课堂数据目录会保留，不会因升级安装而丢失。",
+            WS_CHILD | WS_VISIBLE, 24, 176, 400, 20, font=font,
         )
         if error:
-            add_ctl(hwnd, "STATIC", error, WS_CHILD | WS_VISIBLE, 24, 128, 350, 40, font=font)
+            add_ctl(hwnd, "STATIC", error, WS_CHILD | WS_VISIBLE, 24, 204, 400, 36, font=font)
         add_ctl(hwnd, "BUTTON", "登录", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
-                110, 176, 100, 30, IDOK, font=font)
+                24, 250, 90, 30, IDOK, font=font)
         add_ctl(hwnd, "BUTTON", "退出", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-                230, 176, 100, 30, IDCANCEL, font=font)
+                124, 250, 90, 30, IDCANCEL, font=font)
+        add_ctl(hwnd, "BUTTON", "重置为默认密码", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                230, 250, 150, 30, IDD_RESET_PASSWORD, font=font)
         state["edits"]["user"] = ed_user
         state["edits"]["pass"] = ed_pass
-        user32.SetFocus(ed_pass if username else ed_user)
+        state["edits"]["remember"] = chk
+        if password:
+            user32.SetFocus(ed_pass)
+        else:
+            user32.SetFocus(ed_user if not username else ed_pass)
+
+        def _remember_checked():
+            return user32.SendMessageW(chk, BM_GETCHECK, 0, 0) == BST_CHECKED
 
         def on_ok():
             user = get_text(ed_user).strip()
@@ -618,12 +657,48 @@ def ask_login(parent=None, username="teacher", error=""):
             if not user or not pw:
                 message_box("登录", "请输入账号和密码。", MB_OK | MB_ICONWARNING, hwnd)
                 return
-            state["result"] = (user, pw)
+            state["result"] = (user, pw, _remember_checked())
             user32.DestroyWindow(hwnd)
 
-        state["on_ok"] = on_ok
+        def on_cancel():
+            if store is not None and not _remember_checked():
+                store.clear()
 
-    return _run_simple_dialog("GuoyiTeacherLogin", "教师登录 - 乐昌国艺书院", 420, 260, build, parent)
+        def on_command(cid):
+            if cid == IDD_REMEMBER:
+                if store is not None and not _remember_checked():
+                    store.clear()
+                return
+            if cid != IDD_RESET_PASSWORD:
+                return
+            if not confirm(hwnd, "重置教师密码",
+                           "确定把教师密码重置为默认密码吗？\n默认密码见使用说明，不会显示在本窗口。"):
+                return
+            if not confirm(hwnd, "再次确认",
+                           "这是第二次确认。重置后，请用使用说明中的默认密码重新登录。\n已保存的记住密码会被清除。确定重置吗？"):
+                return
+            try:
+                reset_teacher_password_to_default()
+            except Exception as exc:
+                message_box("重置失败", "无法重置密码：%s" % exc, MB_OK | MB_ICONERROR, hwnd)
+                return
+            if store is not None:
+                store.clear()
+            user32.SendMessageW(chk, BM_SETCHECK, BST_UNCHECKED, 0)
+            set_text(ed_user, "teacher")
+            set_text(ed_pass, "")
+            message_box(
+                "已重置",
+                "教师密码已重置为默认。请查看使用说明中的默认密码后重新登录。\n不会自动记住新密码，除非再次勾选「记住密码」并登录成功。",
+                MB_OK | MB_ICONINFORMATION,
+                hwnd,
+            )
+
+        state["on_ok"] = on_ok
+        state["on_cancel"] = on_cancel
+        state["on_command"] = on_command
+
+    return _run_simple_dialog("GuoyiTeacherLogin", "教师登录 - 乐昌国艺书院", 460, 340, build, parent)
 
 
 def ask_text(parent, title, label):
@@ -1137,11 +1212,12 @@ class FocusWindow(object):
 class TeacherMainWindow(object):
     CLASS_NAME = "GuoyiTeacherMain"
 
-    def __init__(self, client, open_browser_fn=None, lan_ips=None, port=8765):
+    def __init__(self, client, open_browser_fn=None, lan_ips=None, port=8765, cred_store=None):
         self.client = client
         self.open_browser_fn = open_browser_fn
         self.lan_ips = lan_ips or []
         self.port = port
+        self.cred_store = cred_store
         self.hwnd = None
         self.font = default_font()
         self.font_title = title_font()
@@ -1529,7 +1605,17 @@ class TeacherMainWindow(object):
             if not pair:
                 return
             old, new = pair
-            self.call_api(lambda: self.client.change_password(old, new), "密码已更新")
+
+            def _change():
+                result = self.client.change_password(old, new)
+                try:
+                    if self.cred_store is not None:
+                        self.cred_store.update_saved_password(new)
+                except Exception:
+                    pass
+                return result
+
+            self.call_api(_change, "密码已更新")
             return
         if cid == ID_CLASS:
             if (self.client.state or {}).get("class_active"):
@@ -1781,19 +1867,38 @@ class TeacherMainWindow(object):
 def run_main_window(base_url, open_browser_fn=None, lan_ips=None, port=8765):
     """登录后打开教师主窗口，关闭窗口后返回。取消登录也返回。"""
     client = TeacherClient(base_url)
+    cred_store = CredentialStore()
+    saved = cred_store.load()
+    username = saved.get("username") or client.username or "teacher"
+    password = saved.get("password") or ""
+    remember = bool(saved.get("remember"))
     error = ""
     while True:
-        creds = ask_login(None, username=client.username or "teacher", error=error)
+        creds = ask_login(
+            None,
+            username=username,
+            password=password,
+            remember=remember,
+            error=error,
+            cred_store=cred_store,
+        )
         if not creds:
             return
+        username, password, remember = creds[0], creds[1], creds[2]
         try:
-            client.login(creds[0], creds[1])
+            client.login(username, password)
+            apply_remember_choice(cred_store, remember, username, password, success=True)
             break
         except TeacherApiError as exc:
+            apply_remember_choice(cred_store, remember, username, password, success=False)
             error = str(exc)
             message_box("登录失败", error, MB_OK | MB_ICONERROR)
             continue
     window = TeacherMainWindow(
-        client, open_browser_fn=open_browser_fn, lan_ips=lan_ips, port=port
+        client,
+        open_browser_fn=open_browser_fn,
+        lan_ips=lan_ips,
+        port=port,
+        cred_store=cred_store,
     )
     window.run()

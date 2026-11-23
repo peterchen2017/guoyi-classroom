@@ -149,7 +149,7 @@ def main():
     try:
         info = wait_http()
         chk.check("公开信息学校名", info.get("school") == "乐昌国艺书院")
-        chk.check("公开信息版本", info.get("version") == "1.2.5", str(info.get("version")))
+        chk.check("公开信息版本", info.get("version") == "1.2.6", str(info.get("version")))
         chk.check("公开信息开发者", info.get("developer") == "陈老师")
 
         client = TeacherClient(BASE, timeout=10)
@@ -157,9 +157,11 @@ def main():
             client.login("teacher", "wrong-password")
             chk.check("错误密码被拒绝", False)
         except AuthExpired as exc:
-            chk.check("错误密码返回 401", exc.status == 401, str(exc))
+            chk.check("登录 401 不应是 AuthExpired", False, str(exc))
         except TeacherApiError as exc:
-            chk.check("错误密码被拒绝", exc.status == 401, str(exc))
+            chk.check("错误密码返回 401", exc.status == 401, str(exc.status))
+            chk.check("错误密码提示账号或密码不正确", str(exc) == "账号或密码不正确", str(exc))
+            chk.check("错误密码不是 AuthExpired", type(exc) is TeacherApiError)
 
         data = client.login("teacher", "ChangeMe@2026")
         chk.check("教师登录成功", bool(client.token) and data.get("username") == "teacher")
@@ -235,8 +237,10 @@ def main():
         try:
             TeacherClient(BASE, timeout=10).login("teacher", "ChangeMe@2026")
             chk.check("旧密码已失效", False)
-        except (AuthExpired, TeacherApiError):
-            chk.check("旧密码已失效", True)
+        except AuthExpired:
+            chk.check("旧密码失效不应是 AuthExpired", False)
+        except TeacherApiError as exc:
+            chk.check("旧密码已失效", exc.status == 401 and "账号或密码不正确" in str(exc), str(exc))
 
         bad = TeacherClient(BASE, timeout=10)
         bad.token = "not-a-real-token"

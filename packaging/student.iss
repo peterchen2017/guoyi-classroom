@@ -1,5 +1,5 @@
 #define MyAppName "乐昌国艺书院 机房课堂管理（学生机）"
-#define MyAppVersion "1.2.5"
+#define MyAppVersion "1.2.6"
 [Setup]
 AppId={{A7C3E4D1-0B25-4A1E-9C11-GUOYISTUD01}}
 AppName={#MyAppName}

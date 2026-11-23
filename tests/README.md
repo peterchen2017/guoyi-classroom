@@ -55,3 +55,8 @@ cd /workspace/classroom-lab
 另请运行 `tests/test_teacher_client.py`（`./start_verify.sh` 已包含）：
 在 Linux 上启动教师机服务，用原生窗口使用的 API 客户端验证登录、上课、换码、公告、发文件、
 限制名单、广播与默认桌面等接口，以及状态文案映射。不启动 Win32 窗口。
+
+另请运行 `tests/test_credentials.py`（`./start_verify.sh` 已包含）：
+在 Linux 上用可注入的假存储验证记住密码的保存、预填、取消勾选清除、登录失败不保存、改密后更新；
+登录 401 显示「账号或密码不正确」而不是「登录已过期」；以及在临时 data 目录重置为默认密码后可登录。
+不打开 Win32 窗口，测试输出不含明文密码。

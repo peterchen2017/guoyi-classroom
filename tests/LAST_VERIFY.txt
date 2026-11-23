@@ -1,12 +1,13 @@
-验证时间（Asia/Shanghai）：2026-11-23 17:20
+验证时间（Asia/Shanghai）：2026-11-23 17:50
 
 ./start_verify.sh
 
-tests/test_win7_deps.py：通过 41，失败 0
+tests/test_win7_deps.py：通过 45，失败 0
 tests/test_win_types.py：通过 35，失败 0
-tests/test_teacher_client.py：通过 46，失败 0
+tests/test_credentials.py：通过 33，失败 0
+tests/test_teacher_client.py：通过 48，失败 0
 tests/test_desktop.py：通过 14，失败 0
 tests/test_web_filter.py：通过 20，失败 0
 tests/test_flow.py：通过 29，失败 0
 
-本轮为 1.2.5：修正 Win7 / Python 3.8 下 ctypes.wintypes 没有 HCURSOR 导致教师窗口无法打开的问题；学生端「加入课堂」对话框同样修复。在 Linux 上用仿 3.8 缺属性 wintypes 验证 import teacher.win_console / student.win_config / student.win_ui 与 WNDCLASSW 定义，原有功能回归全部通过。本机为 Linux，未做 Windows 7 真机测试，也无法在此环境实际拉起 Win32 GUI。
+本轮为 1.2.6：修正登录失败提示（账号或密码不正确，不再误报登录已过期）；登录窗口支持记住密码（本机 DPAPI）；可重置为默认密码。存储层与 API/客户端测试通过，原有功能回归全部通过。本机为 Linux，未做 Windows 7 真机测试，也无法在此环境实际拉起 Win32 GUI。

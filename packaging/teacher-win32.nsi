@@ -2,7 +2,7 @@ Unicode true
 SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 
-!define APP_VERSION "1.2.5"
+!define APP_VERSION "1.2.6"
 Name "乐昌国艺书院 机房课堂管理（教师机） ${APP_VERSION}"
 OutFile "..\dist\乐昌国艺书院-机房课堂管理-教师机-安装包-x86.exe"
 ; 默认装到当前用户目录，无需管理员（机房 Win7 常见无管理员权限）
