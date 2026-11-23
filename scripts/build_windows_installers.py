@@ -30,6 +30,10 @@ except ImportError:
     from urllib2 import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from shared.version import VERSION, TEACHER_WINDOW_TITLE, STUDENT_WINDOW_TITLE
+
 PACK = ROOT / "packaging"
 DIST = ROOT / "dist"
 CACHE = PACK / "cache"
@@ -94,7 +98,7 @@ def download(url, dest, sha256=None, min_size=10000):
             log("已缓存：%s" % dest.name)
             return dest
     log("下载 %s ..." % url)
-    req = Request(url, headers={"User-Agent": "GuoyiClassroomBuilder/1.2.2"})
+    req = Request(url, headers={"User-Agent": "GuoyiClassroomBuilder/%s" % VERSION})
     with urlopen(req, timeout=180) as resp:
         data = resp.read()
     if sha256:
@@ -335,7 +339,7 @@ def _extract_burn_payloads(bundle_exe, dest):
 def _find_ucrt_payloads():
     """从官方 VS 频道清单定位 Universal CRT Redistributable MSI 与 CAB。"""
     log("查询官方 Universal CRT 可再发行包地址…")
-    raw = urlopen(Request(VS_CHANNEL, headers={"User-Agent": "GuoyiClassroomBuilder/1.2.2"}), timeout=120).read()
+    raw = urlopen(Request(VS_CHANNEL, headers={"User-Agent": "GuoyiClassroomBuilder/%s" % VERSION}), timeout=120).read()
     channel = json.loads(raw)
     vsman_url = None
     for item in channel.get("channelItems") or []:
@@ -348,7 +352,7 @@ def _find_ucrt_payloads():
             break
     if not vsman_url:
         raise RuntimeError("无法在 VS 频道清单中找到 vsman")
-    man = json.loads(urlopen(Request(vsman_url, headers={"User-Agent": "GuoyiClassroomBuilder/1.2.2"}), timeout=180).read())
+    man = json.loads(urlopen(Request(vsman_url, headers={"User-Agent": "GuoyiClassroomBuilder/%s" % VERSION}), timeout=180).read())
     for pkg in man.get("packages") or []:
         if pkg.get("id") == "Microsoft.Windows.UniversalCRT.Redistributable.Msi":
             files = []
@@ -508,12 +512,14 @@ def write_launch_scripts(dest, arch_label):
         "rem Win7 上 chcp 65001 可能失败，这里只用系统中文代码页，失败也不退出",
         "chcp 936 >nul 2>&1",
         "set \"LOG=%~dp0start_teacher.log\"",
+        "title " + TEACHER_WINDOW_TITLE,
         "echo.>>\"%LOG%\"",
         "echo ===== %date% %time% 启动教师机 =====>>\"%LOG%\"",
+        "echo VERSION=" + VERSION + ">>\"%LOG%\"",
         "echo INSTDIR=%CD%>>\"%LOG%\"",
         "echo ========================================",
-        "echo  乐昌国艺书院  机房课堂管理（教师机）",
-        "echo  课堂管理运行中",
+        "echo  乐昌国艺书院  机房课堂管理（教师机） " + VERSION,
+        "echo  " + TEACHER_WINDOW_TITLE,
         "echo  版权所有  乐昌国艺书院    开发者：陈老师",
         "echo ========================================",
         "echo.",
@@ -550,12 +556,14 @@ def write_launch_scripts(dest, arch_label):
         "cd /d \"%~dp0\"",
         "chcp 936 >nul 2>&1",
         "set \"LOG=%~dp0start_student.log\"",
+        "title " + STUDENT_WINDOW_TITLE,
         "echo.>>\"%LOG%\"",
         "echo ===== %date% %time% 启动学生机 =====>>\"%LOG%\"",
+        "echo VERSION=" + VERSION + ">>\"%LOG%\"",
         "echo INSTDIR=%CD%>>\"%LOG%\"",
         "echo ========================================",
-        "echo  乐昌国艺书院  机房课堂管理（学生机）",
-        "echo  课堂管理运行中",
+        "echo  乐昌国艺书院  机房课堂管理（学生机） " + VERSION,
+        "echo  " + STUDENT_WINDOW_TITLE,
         "echo  版权所有  乐昌国艺书院    开发者：陈老师",
         "echo ========================================",
         "echo.",
@@ -594,6 +602,7 @@ def write_launch_scripts(dest, arch_label):
         "set \"LOG=%~dp0start_student.log\"",
         "echo.>>\"%LOG%\"",
         "echo ===== %date% %time% 开机启动学生机 =====>>\"%LOG%\"",
+        "echo VERSION=" + VERSION + ">>\"%LOG%\"",
         "if not exist \"%~dp0python\\python.exe\" goto :fail",
         "\"%~dp0python\\python.exe\" -c \"import sys\" >>\"%LOG%\" 2>&1",
         "if errorlevel 1 goto :fail",
@@ -631,7 +640,7 @@ def write_launch_scripts(dest, arch_label):
 
     # 给绿色版看的简短说明（UTF-8 BOM，记事本可打开）
     tip = (
-        "乐昌国艺书院 机房课堂管理 - 绿色版\r\n"
+        "乐昌国艺书院 机房课堂管理 - 绿色版 %s\r\n"
         "版权所有 © 乐昌国艺书院    开发者：陈老师\r\n"
         "\r\n"
         "本压缩包解压后即可运行，不必管理员，也不必先安装 Python。\r\n"
@@ -649,7 +658,7 @@ def write_launch_scripts(dest, arch_label):
         "32 位 Windows 7 必须使用 x86 包；64 位系统优先使用 x64 包。\r\n"
         "查看方法：打开“计算机”右键 - 属性，看“系统类型”。\r\n"
         "需要 Windows 7 SP1 或更高版本。\r\n"
-        % arch_label
+        % (VERSION, arch_label)
     )
     (dest / "打开说明.txt").write_bytes(b"\xef\xbb\xbf" + tip.encode("utf-8"))
 
@@ -813,6 +822,115 @@ def build_portable_zips(built_archs):
     return made
 
 
+
+def _zip_write_kwargs():
+    kwargs = {"compression": zipfile.ZIP_DEFLATED}
+    if sys.version_info >= (3, 7):
+        kwargs["compresslevel"] = 9
+    return kwargs
+
+
+def build_email_zips():
+    """邮件附件包：每个 zip 含对应安装 exe 与使用说明。"""
+    email_dir = DIST / "email"
+    email_dir.mkdir(parents=True, exist_ok=True)
+    guide = ROOT / "乐昌国艺书院-机房课堂管理-使用说明.txt"
+    pairs = [
+        ("乐昌国艺书院-机房课堂管理-教师机-安装包-x64.exe", "Guoyi-Teacher-x64-setup.zip"),
+        ("乐昌国艺书院-机房课堂管理-教师机-安装包-x86.exe", "Guoyi-Teacher-x86-setup.zip"),
+        ("乐昌国艺书院-机房课堂管理-学生机-安装包-x64.exe", "Guoyi-Student-x64-setup.zip"),
+        ("乐昌国艺书院-机房课堂管理-学生机-安装包-x86.exe", "Guoyi-Student-x86-setup.zip"),
+    ]
+    made = []
+    for exe_name, zip_name in pairs:
+        exe = DIST / exe_name
+        if not exe.is_file():
+            log("跳过邮件包（缺少 exe）：%s" % exe_name)
+            continue
+        zpath = email_dir / zip_name
+        if zpath.exists():
+            zpath.unlink()
+        with zipfile.ZipFile(zpath, "w", **_zip_write_kwargs()) as zf:
+            zf.write(exe, exe_name)
+            if guide.is_file():
+                zf.write(guide, guide.name)
+        made.append(zpath)
+        log("邮件包：%s （%.2f MB）" % (zpath.name, zpath.stat().st_size / (1024 * 1024.0)))
+    return made
+
+
+def build_source_zip():
+    """把源码打进 delivery，不含构建缓存、虚拟环境和已生成安装包。"""
+    delivery = DIST / "delivery"
+    delivery.mkdir(parents=True, exist_ok=True)
+    zpath = delivery / ("guoyi-classroom-source-%s.zip" % VERSION)
+    if zpath.exists():
+        zpath.unlink()
+    skip_dir_names = {
+        ".git", ".venv", "__pycache__", "dist", "cache", "redist", "unpacked",
+        "portable-tmp", "wheels-amd64", "wheels-win32",
+    }
+    skip_suffixes = (".zip", ".exe", ".pyc", ".pyo", ".b64")
+    include_top_dirs = {"packaging", "scripts", "server", "shared", "student", "tests", "web"}
+    with zipfile.ZipFile(zpath, "w", **_zip_write_kwargs()) as zf:
+        for path in sorted(ROOT.iterdir()):
+            if path.name.startswith(".") and path.name not in (".gitignore",):
+                continue
+            if path.is_file():
+                if path.suffix.lower() in skip_suffixes:
+                    continue
+                if path.stat().st_size > 1024 * 1024:
+                    continue
+                zf.write(path, "guoyi-classroom-%s/%s" % (VERSION, path.name))
+                continue
+            if path.name not in include_top_dirs:
+                continue
+            for sub in sorted(path.rglob("*")):
+                if sub.is_dir():
+                    continue
+                parts = sub.relative_to(ROOT).parts
+                if any(part in skip_dir_names or part.startswith("staging-") for part in parts):
+                    continue
+                if sub.suffix.lower() in skip_suffixes:
+                    continue
+                rel_s = str(sub.relative_to(ROOT)).replace("\\", "/")
+                zf.write(sub, "guoyi-classroom-%s/%s" % (VERSION, rel_s))
+    log("源码包：%s （%.2f MB）" % (zpath.name, zpath.stat().st_size / (1024 * 1024.0)))
+    return zpath
+
+
+def write_delivery_sums(extra_paths):
+    delivery = DIST / "delivery"
+    delivery.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for p in sorted(DIST.iterdir()):
+        if p.is_file() and p.suffix.lower() in (".exe", ".zip"):
+            paths.append(p)
+    for p in extra_paths:
+        p = Path(p)
+        if p.is_file():
+            paths.append(p)
+    # unique, keep order
+    seen = set()
+    uniq = []
+    for p in paths:
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(p)
+    lines = []
+    for p in uniq:
+        digest = hashlib.sha256(p.read_bytes()).hexdigest()
+        size = p.stat().st_size / (1024 * 1024.0)
+        lines.append("%s  %s  (%.2f MB)" % (digest, str(p), size))
+        log("  交付校验：%s  %.2f MB  %s" % (p.name, size, digest))
+    out = delivery / ("RELEASE-SHA256SUMS-%s.txt" % VERSION)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log("已写入 %s" % out)
+    return out
+
+
 def write_sha256sums():
     rows = []
     for p in sorted(DIST.iterdir()):
@@ -856,6 +974,13 @@ def main():
         errors.append("portable: %s" % exc)
         log("绿色版打包失败：%s" % exc)
     write_sha256sums()
+    try:
+        email_zips = build_email_zips()
+        src_zip = build_source_zip()
+        write_delivery_sums(list(email_zips) + [src_zip])
+    except Exception as exc:
+        errors.append("email/delivery: %s" % exc)
+        log("邮件包或交付校验失败：%s" % exc)
     for p in sorted(DIST.glob("*.exe")) + sorted(DIST.glob("*.zip")):
         log("交付：%s (%s 字节)" % (p, p.stat().st_size))
     if not built:

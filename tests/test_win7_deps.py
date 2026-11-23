@@ -102,6 +102,49 @@ def main():
                 hits.append(str(f.relative_to(ROOT)))
     c.check("应用源码不引用 pydantic_core", not hits, ", ".join(hits))
 
+    from shared.version import VERSION
+    from server import config as server_config
+    import launch_teacher
+    import launch_student
+
+    c.check("应用版本为 1.2.3", VERSION == "1.2.3", VERSION)
+    c.check("server.config.VERSION 与 shared.version 一致", server_config.VERSION == VERSION)
+
+    # 启动日志写明 VERSION，便于从日志判断是否跑到新版
+    for label, mod in (("教师机", launch_teacher), ("学生机", launch_student)):
+        td = tempfile.mkdtemp(prefix="guoyi-ver-")
+        logp = Path(td) / "start.log"
+        os.environ["CLASSROOM_LAUNCH_LOG"] = str(logp)
+        try:
+            with launch_teacher.open_log(append=False) if False else open(str(logp), "w", encoding="utf-8") as fp:
+                pass
+            with mod.open_log(append=False) as fp:
+                mod.write_header(fp)
+        finally:
+            os.environ.pop("CLASSROOM_LAUNCH_LOG", None)
+        text = logp.read_text(encoding="utf-8-sig") if logp.is_file() else ""
+        c.check("%s 启动日志含 VERSION=%s" % (label, VERSION), ("VERSION=%s" % VERSION) in text, text[:200].replace("\n", " / "))
+
+    # 1.2.1 的 launch_teacher.py 里 main() 约在第 29 行；新版应远在其后
+    src = (ROOT / "launch_teacher.py").read_text(encoding="utf-8").splitlines()
+    main_lines = [i + 1 for i, line in enumerate(src) if line.startswith("def main(")]
+    c.check("launch_teacher.py 的 main() 不在旧版行号附近", bool(main_lines) and min(main_lines) >= 100, str(main_lines))
+
+    teacher_nsi = (ROOT / "packaging" / "teacher.nsi").read_text(encoding="utf-8")
+    student_nsi = (ROOT / "packaging" / "student.nsi").read_text(encoding="utf-8")
+    cleanup = (ROOT / "packaging" / "upgrade-cleanup.nsh").read_text(encoding="utf-8")
+    c.check("存在升级清理脚本 upgrade-cleanup.nsh", (ROOT / "packaging" / "upgrade-cleanup.nsh").is_file())
+    for role, nsi in (("教师机", teacher_nsi), ("学生机", student_nsi)):
+        c.check("%s NSIS 安装前调用升级清理" % role, "!insertmacro GuoyiCleanupOldProgramFiles" in nsi and nsi.find("!insertmacro GuoyiCleanupOldProgramFiles") < nsi.find("File /r"))
+        c.check("%s NSIS 版本为 1.2.3" % role, '!define APP_VERSION "1.2.3"' in nsi and "${APP_VERSION}" in nsi)
+    c.check("升级清理会删除旧 launch 脚本", "launch_teacher.py" in cleanup and "launch_student.py" in cleanup and "start_teacher.cmd" in cleanup)
+    c.check("升级清理会移除整棵内置 Python/site-packages", 'RMDir /r "$INSTDIR\\python"' in cleanup)
+    c.check("升级清理说明保留日志和 data", "data" in cleanup and "*.log" in cleanup)
+
+    guide = (ROOT / "乐昌国艺书院-机房课堂管理-使用说明.txt").read_text(encoding="utf-8")
+    c.check("使用说明提示升级前可先卸载旧版", "升级前可先卸载旧版" in guide or "建议先卸载旧版再安装本版" in guide)
+    c.check("使用说明提示旧行号/_pydantic_core 仍是旧程序", "_pydantic_core" in guide and "30 行" in guide)
+
     if not c.summary():
         sys.exit(1)
 

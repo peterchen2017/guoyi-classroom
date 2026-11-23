@@ -165,7 +165,7 @@ class StudentClient(object):
     def _status_text(self):
         parts = [
             "课堂管理运行中",
-            "乐昌国艺书院",
+            "乐昌国艺书院  学生机  v%s" % server_config.VERSION,
             "学生：%s" % self.name,
             "教师机：%s:%s" % (self.server or "未连接", self.port),
             "登记：%s" % ("已加入" if self.approved else "等待教师允许"),

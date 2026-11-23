@@ -3,10 +3,12 @@
 
 import sys
 
+from shared.version import STUDENT_WINDOW_TITLE
+
 
 class ConsoleUI(object):
-    def __init__(self, title="课堂管理运行中 - 乐昌国艺书院"):
-        self.title = title
+    def __init__(self, title=None):
+        self.title = title or STUDENT_WINDOW_TITLE
         self._last = ""
 
     def start(self):

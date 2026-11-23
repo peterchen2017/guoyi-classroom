@@ -7,6 +7,8 @@ import sys
 import threading
 from ctypes import POINTER, Structure, byref, sizeof
 
+from shared.version import STUDENT_WINDOW_TITLE
+
 if sys.platform != "win32":
     raise ImportError("win_ui 仅在 Windows 上使用")
 
@@ -186,8 +188,8 @@ def _virtual_screen():
 class WinUI(object):
     """课堂管理运行中：可见状态窗 + 托盘；锁屏为置顶全屏窗口。"""
 
-    def __init__(self, title="课堂管理运行中 - 乐昌国艺书院"):
-        self.title = title
+    def __init__(self, title=None):
+        self.title = title or STUDENT_WINDOW_TITLE
         self._queue = queue.Queue()
         self._thread = None
         self._tid = 0
